@@ -23,6 +23,7 @@ export interface WalletDerivation {
 const NETWORK_PREFIX = 'bc';
 const ACCOUNT_PATH = "m/84'/0'/0'";
 const ZPUB_PREFIX = new Uint8Array([0x04, 0xb2, 0x47, 0x46]);
+const base58checkCodec = base58check(sha256);
 
 function hash160(publicKey: Uint8Array): Uint8Array {
   return ripemd160(sha256(publicKey));
@@ -84,9 +85,9 @@ export function createRandomMnemonic(): string {
 }
 
 function convertXpubToZpub(xpub: string): string {
-  const decoded = base58check.decode(xpub);
+  const decoded = base58checkCodec.decode(xpub);
   const zpubBytes = new Uint8Array(decoded.length);
   zpubBytes.set(ZPUB_PREFIX, 0);
   zpubBytes.set(decoded.slice(ZPUB_PREFIX.length), ZPUB_PREFIX.length);
-  return base58check.encode(zpubBytes);
+  return base58checkCodec.encode(zpubBytes);
 }
