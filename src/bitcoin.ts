@@ -1,7 +1,7 @@
 import { mnemonicToSeedSync, generateMnemonic, validateMnemonic } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
 import { HDKey } from '@scure/bip32';
-import { bech32 } from '@scure/base';
+import { base58check, bech32 } from '@scure/base';
 import { ripemd160 } from '@noble/hashes/ripemd160';
 import { sha256 } from '@noble/hashes/sha256';
 
@@ -22,6 +22,7 @@ export interface WalletDerivation {
 
 const NETWORK_PREFIX = 'bc';
 const ACCOUNT_PATH = "m/84'/0'/0'";
+const ZPUB_PREFIX = new Uint8Array([0x04, 0xb2, 0x47, 0x46]);
 
 function hash160(publicKey: Uint8Array): Uint8Array {
   return ripemd160(sha256(publicKey));
@@ -73,11 +74,19 @@ export function deriveWalletFromMnemonic(mnemonic: string, addressCount = 5): Wa
 
   return {
     mnemonic,
-    accountXpub: account.publicExtendedKey,
+    accountXpub: convertXpubToZpub(account.publicExtendedKey),
     addresses: [...receive, ...change],
   };
 }
 
 export function createRandomMnemonic(): string {
   return generateMnemonic(wordlist, 128);
+}
+
+function convertXpubToZpub(xpub: string): string {
+  const decoded = base58check.decode(xpub);
+  const zpubBytes = new Uint8Array(decoded.length);
+  zpubBytes.set(ZPUB_PREFIX, 0);
+  zpubBytes.set(decoded.slice(ZPUB_PREFIX.length), ZPUB_PREFIX.length);
+  return base58check.encode(zpubBytes);
 }

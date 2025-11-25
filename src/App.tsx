@@ -114,7 +114,7 @@ function UtxoList({ utxos, pathLookup }: { utxos: BlockbookUtxo[]; pathLookup: M
               <Grid templateColumns={{ base: '1fr', md: 'repeat(2, minmax(0, 1fr))' }} gap={3}>
                 <GridItem>
                   <Text fontWeight="bold">Address</Text>
-                  <Text fontFamily="mono" wordBreak="break-all">{utxo.address || 'Unknown (xpub scope)'}</Text>
+                  <Text fontFamily="mono" wordBreak="break-all">{utxo.address || 'Unknown (zpub scope)'}</Text>
                 </GridItem>
                 <GridItem>
                   <Text fontWeight="bold">Derivation path</Text>
@@ -154,7 +154,7 @@ function App() {
   const accent = useColorModeValue('purple.600', 'purple.300');
 
   const [mnemonic, setMnemonic] = useState('');
-  const [accountXpub, setAccountXpub] = useState('');
+  const [accountZpub, setAccountZpub] = useState('');
   const [addresses, setAddresses] = useState<DerivedAddress[]>([]);
   const [utxos, setUtxos] = useState<BlockbookUtxo[]>([]);
   const [apiKey, setApiKey] = useState('');
@@ -168,7 +168,7 @@ function App() {
       const nextMnemonic = value ?? createRandomMnemonic();
       const derived = deriveWalletFromMnemonic(nextMnemonic, 6);
       setMnemonic(nextMnemonic);
-      setAccountXpub(derived.accountXpub);
+      setAccountZpub(derived.accountXpub);
       setAddresses(derived.addresses);
       setError(null);
     } catch (err) {
@@ -184,7 +184,7 @@ function App() {
     setLoadingUtxo(true);
     setError(null);
     try {
-      const results = await fetchUtxos(accountXpub, apiKey || undefined);
+      const results = await fetchUtxos(accountZpub, apiKey || undefined);
       setUtxos(results);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch UTXOs');
@@ -228,8 +228,8 @@ function App() {
 
         <Box p={6} rounded="lg" bg={panelBg} shadow="md">
           <Stack spacing={3}>
-            <Heading size="md">Account xpub (BIP84 m/84&#39;/0&#39;/0&#39;)</Heading>
-            <Textarea value={accountXpub} isReadOnly fontFamily="mono" rows={2} />
+            <Heading size="md">Account zpub (BIP84 m/84&#39;/0&#39;/0&#39;)</Heading>
+            <Textarea value={accountZpub} isReadOnly fontFamily="mono" rows={2} />
           </Stack>
         </Box>
 
@@ -244,7 +244,7 @@ function App() {
           <Stack spacing={4}>
             <Heading size="md">UTXO lookup (NowNodes Blockbook)</Heading>
             <Text color="gray.500">
-              Provide an optional NowNodes API key to avoid rate limiting. We query UTXOs using the account xpub.
+              Provide an optional NowNodes API key to avoid rate limiting. We query UTXOs using the account zpub to stay in the p2wpkh scope.
             </Text>
             <InputGroup>
               <InputLeftAddon>API key</InputLeftAddon>
@@ -255,7 +255,7 @@ function App() {
               />
             </InputGroup>
             <Button colorScheme="purple" onClick={handleFetchUtxos} isLoading={loadingUtxo} alignSelf="flex-start">
-              Fetch UTXOs for xpub
+              Fetch UTXOs for zpub
             </Button>
             {error && (
               <Alert status="error" borderRadius="md">
