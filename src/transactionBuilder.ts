@@ -3,10 +3,23 @@ import { mnemonicToSeedSync } from '@scure/bip39';
 import { HDKey } from '@scure/bip32';
 import * as bitcoin from 'bitcoinjs-lib';
 import * as secp256k1 from '@noble/secp256k1';
+import { hmac } from '@noble/hashes/hmac';
+import { sha256 } from '@noble/hashes/sha256';
 import { BlockbookUtxo } from './blockbookClient';
 import { DerivedAddress } from './bitcoin';
 
 const ACCOUNT_PATH = "m/84'/0'/0'";
+
+// Noble doesn't bundle a default HMAC implementation for signatures in browser builds
+// so we wire one up once here for all signing operations.
+if (!secp256k1.etc.hmacSha256Sync) {
+  secp256k1.etc.hmacSha256Sync = (key, ...msgs) =>
+    hmac(sha256, key, secp256k1.etc.concatBytes(...msgs));
+}
+if (!secp256k1.etc.hmacSha256Async) {
+  secp256k1.etc.hmacSha256Async = async (key, ...msgs) =>
+    secp256k1.etc.hmacSha256Sync!(key, ...msgs);
+}
 
 function derEncodeCompactSignature(signature: secp256k1.Signature): Buffer {
   const compact = signature.toCompactRawBytes();
