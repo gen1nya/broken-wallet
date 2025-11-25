@@ -9,7 +9,7 @@ export interface BlockbookUtxo {
 }
 
 const BLOCKBOOK_BASE = import.meta.env.DEV
-  ? '/nownodes/btcbook/api/v2'
+  ? '/nownodes/api/v2'
   : 'https://btcbook.nownodes.io/api/v2';
 
 export async function fetchUtxos(zpub: string, apiKey?: string): Promise<BlockbookUtxo[]> {
