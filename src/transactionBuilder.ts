@@ -21,44 +21,6 @@ if (!secp256k1.etc.hmacSha256Async) {
     secp256k1.etc.hmacSha256Sync!(key, ...msgs);
 }
 
-function derEncodeCompactSignature(signature: secp256k1.Signature): Buffer {
-  const compact = signature.toCompactRawBytes();
-  const r = compact.slice(0, 32);
-  const s = compact.slice(32);
-
-  const encodeInt = (value: Uint8Array) => {
-    let i = 0;
-    while (i < value.length && value[i] === 0) i += 1;
-    let v = value.slice(i);
-    if (v.length === 0) v = new Uint8Array([0]);
-    if (v[0] & 0x80) {
-      const prefixed = new Uint8Array(v.length + 1);
-      prefixed.set(v, 1);
-      return prefixed;
-    }
-    return v;
-  };
-
-  const rDer = encodeInt(r);
-  const sDer = encodeInt(s);
-
-  const totalLength = 2 + rDer.length + 2 + sDer.length;
-  const der = Buffer.alloc(2 + totalLength);
-  let offset = 0;
-  der[offset++] = 0x30;
-  der[offset++] = totalLength;
-  der[offset++] = 0x02;
-  der[offset++] = rDer.length;
-  Buffer.from(rDer).copy(der, offset);
-  offset += rDer.length;
-  der[offset++] = 0x02;
-  der[offset++] = sDer.length;
-  Buffer.from(sDer).copy(der, offset);
-  offset += sDer.length;
-
-  return der.subarray(0, offset);
-}
-
 function createPsbtSigner(privateKey: Uint8Array) {
   const privKeyCopy = Uint8Array.from(privateKey);
   const publicKey = Buffer.from(secp256k1.getPublicKey(privKeyCopy, true));
@@ -67,7 +29,7 @@ function createPsbtSigner(privateKey: Uint8Array) {
     publicKey,
     sign: async (hash: Buffer) => {
       const signature = await secp256k1.sign(hash, privKeyCopy);
-      return derEncodeCompactSignature(signature);
+      return Buffer.from(signature.toCompactRawBytes());
     },
   };
 }
