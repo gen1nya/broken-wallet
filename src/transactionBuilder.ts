@@ -143,8 +143,8 @@ export async function buildSignedTransaction(
     throw new Error('Select at least one UTXO');
   }
 
-  if (!outputs.length) {
-    throw new Error('Add at least one output');
+  if (!outputs.length && !changeAddress) {
+    throw new Error('Add at least one output or specify a change address');
   }
 
   const network = getNetwork();
@@ -186,7 +186,13 @@ export async function buildSignedTransaction(
 
     if (changeValue > 0n) {
       prospectiveOutputs.push({ address: changeAddress, amountSats: changeValue });
+    } else if (outputs.length === 0) {
+      throw new Error('No value remains for change after fees');
     }
+  }
+
+  if (prospectiveOutputs.length === 0) {
+    throw new Error('No outputs to build. Provide a change address or destination.');
   }
 
   const totalPlannedOutput = prospectiveOutputs.reduce((sum, output) => sum + output.amountSats, 0n);

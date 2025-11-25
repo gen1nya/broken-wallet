@@ -94,7 +94,7 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses, apiKey }: P
   };
 
   const removeOutputRow = (id: string) => {
-    setOutputs((prev) => (prev.length === 1 ? prev : prev.filter((row) => row.id !== id)));
+    setOutputs((prev) => prev.filter((row) => row.id !== id));
   };
 
   const parseOutputs = (): TxOutputRequest[] => {
@@ -220,7 +220,10 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses, apiKey }: P
       <Box p={6} rounded="lg" bg={panelBg} shadow="md">
         <Stack spacing={4}>
           <Heading size="md">Outputs</Heading>
-          <Text color="gray.500">Send to p2pkh or p2wpkh addresses. Add as many outputs as you need.</Text>
+          <Text color="gray.500">
+            Send to p2pkh or p2wpkh addresses. Add as many outputs as you need, or leave this section empty to
+            sweep the selected UTXOs to your change address.
+          </Text>
 
           <Stack spacing={3}>
             {outputs.map((row) => (
