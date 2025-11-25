@@ -2,14 +2,21 @@ import { Buffer } from 'buffer';
 import { mnemonicToSeedSync } from '@scure/bip39';
 import { HDKey } from '@scure/bip32';
 import * as bitcoin from 'bitcoinjs-lib';
-import { ECPairFactory } from 'ecpair';
-import * as ecc from 'tiny-secp256k1';
+import * as secp256k1 from '@noble/secp256k1';
 import { BlockbookUtxo } from './blockbookClient';
 import { DerivedAddress } from './bitcoin';
 
 const ACCOUNT_PATH = "m/84'/0'/0'";
 
-const ECPair = ECPairFactory(ecc);
+function createPsbtSigner(privateKey: Uint8Array) {
+  const privKeyCopy = Uint8Array.from(privateKey);
+  const publicKey = Buffer.from(secp256k1.getPublicKey(privKeyCopy, true));
+
+  return {
+    publicKey,
+    sign: (hash: Buffer) => Buffer.from(secp256k1.signSync(hash, privKeyCopy, { der: true, canonical: true })),
+  };
+}
 
 export type AddressEncoding = 'p2wpkh' | 'p2pkh';
 
@@ -204,8 +211,8 @@ export function buildSignedTransaction(
       ],
     });
 
-    const keyPair = ECPair.fromPrivateKey(Buffer.from(node.privateKey));
-    psbt.signInput(psbt.inputCount - 1, keyPair);
+    const signer = createPsbtSigner(node.privateKey);
+    psbt.signInput(psbt.inputCount - 1, signer);
   });
 
   psbt.finalizeAllInputs();
