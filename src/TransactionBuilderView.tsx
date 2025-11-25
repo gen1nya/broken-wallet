@@ -124,12 +124,12 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses, apiKey }: P
     return parsed;
   };
 
-  const handleBuild = () => {
+  const handleBuild = async () => {
     setError(null);
     setBroadcastedTxId(null);
     try {
       const parsedOutputs = parseOutputs();
-      const result = buildSignedTransaction(
+      const result = await buildSignedTransaction(
         mnemonic,
         selectedUtxoList,
         parsedOutputs,

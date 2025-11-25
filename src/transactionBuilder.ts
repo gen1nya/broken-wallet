@@ -8,13 +8,54 @@ import { DerivedAddress } from './bitcoin';
 
 const ACCOUNT_PATH = "m/84'/0'/0'";
 
+function derEncodeCompactSignature(signature: secp256k1.Signature): Buffer {
+  const compact = signature.toCompactRawBytes();
+  const r = compact.slice(0, 32);
+  const s = compact.slice(32);
+
+  const encodeInt = (value: Uint8Array) => {
+    let i = 0;
+    while (i < value.length && value[i] === 0) i += 1;
+    let v = value.slice(i);
+    if (v.length === 0) v = new Uint8Array([0]);
+    if (v[0] & 0x80) {
+      const prefixed = new Uint8Array(v.length + 1);
+      prefixed.set(v, 1);
+      return prefixed;
+    }
+    return v;
+  };
+
+  const rDer = encodeInt(r);
+  const sDer = encodeInt(s);
+
+  const totalLength = 2 + rDer.length + 2 + sDer.length;
+  const der = Buffer.alloc(2 + totalLength);
+  let offset = 0;
+  der[offset++] = 0x30;
+  der[offset++] = totalLength;
+  der[offset++] = 0x02;
+  der[offset++] = rDer.length;
+  Buffer.from(rDer).copy(der, offset);
+  offset += rDer.length;
+  der[offset++] = 0x02;
+  der[offset++] = sDer.length;
+  Buffer.from(sDer).copy(der, offset);
+  offset += sDer.length;
+
+  return der.subarray(0, offset);
+}
+
 function createPsbtSigner(privateKey: Uint8Array) {
   const privKeyCopy = Uint8Array.from(privateKey);
   const publicKey = Buffer.from(secp256k1.getPublicKey(privKeyCopy, true));
 
   return {
     publicKey,
-    sign: (hash: Buffer) => Buffer.from(secp256k1.signSync(hash, privKeyCopy, { der: true, canonical: true })),
+    sign: async (hash: Buffer) => {
+      const signature = await secp256k1.sign(hash, privKeyCopy);
+      return derEncodeCompactSignature(signature);
+    },
   };
 }
 
@@ -115,14 +156,14 @@ function deriveAccountNode(mnemonic: string) {
   return master.derive(ACCOUNT_PATH);
 }
 
-export function buildSignedTransaction(
+export async function buildSignedTransaction(
   mnemonic: string,
   utxos: BlockbookUtxo[],
   outputs: TxOutputRequest[],
   addressMap: Map<string, DerivedAddress>,
   changeAddress: string | null,
   feeRate: number,
-): TxBuildResult {
+): Promise<TxBuildResult> {
   if (!utxos.length) {
     throw new Error('Select at least one UTXO');
   }
@@ -182,7 +223,7 @@ export function buildSignedTransaction(
     psbt.addOutput({ address: output.address, value: Number(output.amountSats) });
   });
 
-  utxos.forEach((utxo) => {
+  for (const utxo of utxos) {
     const derivation = utxo.path || addressMap.get(utxo.address ?? '')?.path;
     if (!derivation) {
       throw new Error(`No derivation path found for ${utxo.address ?? 'unknown address'}`);
@@ -212,8 +253,8 @@ export function buildSignedTransaction(
     });
 
     const signer = createPsbtSigner(node.privateKey);
-    psbt.signInput(psbt.inputCount - 1, signer);
-  });
+    await psbt.signInputAsync(psbt.inputCount - 1, signer);
+  }
 
   psbt.finalizeAllInputs();
   const tx = psbt.extractTransaction();
