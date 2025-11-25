@@ -24,4 +24,4 @@ The UI now previews a native-segwit Bitcoin account derived from a generated mne
 
 ## NowNodes Blockbook lookups
 
-UTXO lookups use the publicly reachable Blockbook endpoint at `https://btcbook.nownodes.io/api/v2`. You can optionally provide an `apiKey` header (exposed in the UI) if you have a NowNodes key to avoid rate limits. The lookup uses the derived account `xpub` and displays UTXO metadata plus the derivation path and address when available.
+UTXO lookups use the publicly reachable Blockbook endpoint at `https://btcbook.nownodes.io/api/v2`. During `npm run dev`, calls are proxied through Vite to avoid browser CORS limits. You can optionally provide an `api-key` header (exposed in the UI) if you have a NowNodes key to avoid rate limits. The lookup uses the derived account `xpub` and displays UTXO metadata plus the derivation path and address when available.

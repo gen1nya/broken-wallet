@@ -8,11 +8,13 @@ export interface BlockbookUtxo {
   path?: string;
 }
 
-const BLOCKBOOK_BASE = 'https://btcbook.nownodes.io/api/v2';
+const BLOCKBOOK_BASE = import.meta.env.DEV
+  ? '/nownodes/btcbook/api/v2'
+  : 'https://btcbook.nownodes.io/api/v2';
 
 export async function fetchUtxos(xpub: string, apiKey?: string): Promise<BlockbookUtxo[]> {
   const response = await fetch(`${BLOCKBOOK_BASE}/utxo/${encodeURIComponent(xpub)}?pageSize=200`, {
-    headers: apiKey ? { apiKey } : undefined,
+    headers: apiKey ? { 'api-key': apiKey } : undefined,
   });
 
   if (!response.ok) {

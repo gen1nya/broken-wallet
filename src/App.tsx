@@ -248,7 +248,11 @@ function App() {
             </Text>
             <InputGroup>
               <InputLeftAddon>API key</InputLeftAddon>
-              <Input placeholder="Optional NowNodes apiKey header" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+              <Input
+                placeholder="Optional NowNodes api-key header (sent via dev proxy)"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+              />
             </InputGroup>
             <Button colorScheme="purple" onClick={handleFetchUtxos} isLoading={loadingUtxo} alignSelf="flex-start">
               Fetch UTXOs for xpub
