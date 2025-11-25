@@ -198,7 +198,9 @@ export async function buildSignedTransaction(
     psbt.addOutput({ address: output.address, value: Number(output.amountSats) });
   });
 
-  for (const utxo of utxos) {
+  const signers: Array<{ signer: ReturnType<typeof createPsbtSigner>; index: number }> = [];
+
+  utxos.forEach((utxo) => {
     const derivation = utxo.path || addressMap.get(utxo.address ?? '')?.path;
     if (!derivation) {
       throw new Error(`No derivation path found for ${utxo.address ?? 'unknown address'}`);
@@ -227,8 +229,11 @@ export async function buildSignedTransaction(
       ],
     });
 
-    const signer = createPsbtSigner(node.privateKey);
-    await psbt.signInputAsync(psbt.inputCount - 1, signer);
+    signers.push({ signer: createPsbtSigner(node.privateKey), index: psbt.inputCount - 1 });
+  });
+
+  for (const { signer, index } of signers) {
+    await psbt.signInputAsync(index, signer);
   }
 
   psbt.finalizeAllInputs();
