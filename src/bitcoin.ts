@@ -93,10 +93,31 @@ function deriveLegacyAddress(account: HDKey, chain: number, index: number, type:
   };
 }
 
-export function deriveWalletFromMnemonic(mnemonic: string, addressCount = 5): WalletDerivation {
+export interface AddressGenerationOptions {
+  receiveCount?: number;
+  changeCount?: number;
+}
+
+export function deriveWalletFromMnemonic(
+  mnemonic: string,
+  options: number | AddressGenerationOptions = 5
+): WalletDerivation {
   if (!validateMnemonic(mnemonic, wordlist)) {
     throw new Error('Invalid mnemonic');
   }
+
+  // Backwards compatibility: if options is a number, use old behavior
+  let receiveCount: number;
+  let changeCount: number;
+
+  if (typeof options === 'number') {
+    receiveCount = options;
+    changeCount = Math.max(2, Math.floor(options / 2));
+  } else {
+    receiveCount = options.receiveCount ?? 5;
+    changeCount = options.changeCount ?? Math.max(2, Math.floor(receiveCount / 2));
+  }
+
   const seed = mnemonicToSeedSync(mnemonic);
   const master = HDKey.fromMasterSeed(seed);
 
@@ -106,10 +127,10 @@ export function deriveWalletFromMnemonic(mnemonic: string, addressCount = 5): Wa
     throw new Error('Unable to derive segwit account xpub');
   }
 
-  const segwitReceive: DerivedAddress[] = Array.from({ length: addressCount }, (_, index) =>
+  const segwitReceive: DerivedAddress[] = Array.from({ length: receiveCount }, (_, index) =>
     deriveSegwitAddress(segwitAccount, 0, index, 'receive'),
   );
-  const segwitChange: DerivedAddress[] = Array.from({ length: Math.max(2, Math.floor(addressCount / 2)) }, (_, index) =>
+  const segwitChange: DerivedAddress[] = Array.from({ length: changeCount }, (_, index) =>
     deriveSegwitAddress(segwitAccount, 1, index, 'change'),
   );
 
@@ -119,10 +140,10 @@ export function deriveWalletFromMnemonic(mnemonic: string, addressCount = 5): Wa
     throw new Error('Unable to derive legacy account xpub');
   }
 
-  const legacyReceive: DerivedAddress[] = Array.from({ length: addressCount }, (_, index) =>
+  const legacyReceive: DerivedAddress[] = Array.from({ length: receiveCount }, (_, index) =>
     deriveLegacyAddress(legacyAccount, 0, index, 'receive'),
   );
-  const legacyChange: DerivedAddress[] = Array.from({ length: Math.max(2, Math.floor(addressCount / 2)) }, (_, index) =>
+  const legacyChange: DerivedAddress[] = Array.from({ length: changeCount }, (_, index) =>
     deriveLegacyAddress(legacyAccount, 1, index, 'change'),
   );
 
