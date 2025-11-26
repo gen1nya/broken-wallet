@@ -24,6 +24,11 @@ import {
   Th,
   Thead,
   Tr,
+  Tab,
+  TabList,
+  TabPanel,
+  TabPanels,
+  Tabs,
   useColorMode,
   useColorModeValue,
 } from '@chakra-ui/react';
@@ -31,6 +36,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { FaMoon, FaSun, FaWallet } from 'react-icons/fa';
 import { BlockbookUtxo, fetchUtxos } from './blockbookClient';
 import { DerivedAddress, createRandomMnemonic, deriveWalletFromMnemonic } from './bitcoin';
+import TransactionBuilderView from './TransactionBuilderView';
 
 function ColorModeToggle() {
   const { colorMode, toggleColorMode } = useColorMode();
@@ -212,61 +218,76 @@ function App() {
         <ColorModeToggle />
       </Flex>
 
-      <Stack spacing={8}>
-        <Box p={6} rounded="lg" bg={panelBg} shadow="md">
-          <Stack spacing={4}>
-            <Heading size="md">Wallet seed</Heading>
-            <Text color="gray.500">
-              We derive a BIP84 account (native segwit, p2wpkh) and preview a handful of addresses.
-            </Text>
-            <Textarea value={mnemonic} onChange={(e) => onMnemonicChange(e.target.value)} rows={3} />
-            <HStack>
-              <Button colorScheme="purple" onClick={() => refreshMnemonic()}>Generate new mnemonic</Button>
-            </HStack>
-          </Stack>
-        </Box>
+      <Tabs variant="enclosed" colorScheme="purple">
+        <TabList>
+          <Tab>Wallet</Tab>
+          <Tab>Transaction builder</Tab>
+        </TabList>
 
-        <Box p={6} rounded="lg" bg={panelBg} shadow="md">
-          <Stack spacing={3}>
-            <Heading size="md">Account zpub (BIP84 m/84&#39;/0&#39;/0&#39;)</Heading>
-            <Textarea value={accountZpub} isReadOnly fontFamily="mono" rows={2} />
-          </Stack>
-        </Box>
+        <TabPanels>
+          <TabPanel px={0}>
+            <Stack spacing={8}>
+              <Box p={6} rounded="lg" bg={panelBg} shadow="md">
+                <Stack spacing={4}>
+                  <Heading size="md">Wallet seed</Heading>
+                  <Text color="gray.500">
+                    We derive a BIP84 account (native segwit, p2wpkh) and preview a handful of addresses.
+                  </Text>
+                  <Textarea value={mnemonic} onChange={(e) => onMnemonicChange(e.target.value)} rows={3} />
+                  <HStack>
+                    <Button colorScheme="purple" onClick={() => refreshMnemonic()}>Generate new mnemonic</Button>
+                  </HStack>
+                </Stack>
+              </Box>
 
-        <Box p={6} rounded="lg" bg={panelBg} shadow="md">
-          <Stack spacing={4}>
-            <Heading size="md">Derived addresses</Heading>
-            <AddressTable addresses={addresses} />
-          </Stack>
-        </Box>
+              <Box p={6} rounded="lg" bg={panelBg} shadow="md">
+                <Stack spacing={3}>
+                  <Heading size="md">Account zpub (BIP84 m/84&#39;/0&#39;/0&#39;)</Heading>
+                  <Textarea value={accountZpub} isReadOnly fontFamily="mono" rows={2} />
+                </Stack>
+              </Box>
 
-        <Box p={6} rounded="lg" bg={panelBg} shadow="md">
-          <Stack spacing={4}>
-            <Heading size="md">UTXO lookup (NowNodes Blockbook)</Heading>
-            <Text color="gray.500">
-              Provide an optional NowNodes API key to avoid rate limiting. We query UTXOs using the account zpub to stay in the p2wpkh scope.
-            </Text>
-            <InputGroup>
-              <InputLeftAddon>API key</InputLeftAddon>
-              <Input
-                placeholder="Optional NowNodes api-key header (sent via dev proxy)"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-              />
-            </InputGroup>
-            <Button colorScheme="purple" onClick={handleFetchUtxos} isLoading={loadingUtxo} alignSelf="flex-start">
-              Fetch UTXOs for zpub
-            </Button>
-            {error && (
-              <Alert status="error" borderRadius="md">
-                <AlertIcon />
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            <UtxoList utxos={utxos} pathLookup={addressMap} />
-          </Stack>
-        </Box>
-      </Stack>
+              <Box p={6} rounded="lg" bg={panelBg} shadow="md">
+                <Stack spacing={4}>
+                  <Heading size="md">Derived addresses</Heading>
+                  <AddressTable addresses={addresses} />
+                </Stack>
+              </Box>
+
+              <Box p={6} rounded="lg" bg={panelBg} shadow="md">
+                <Stack spacing={4}>
+                  <Heading size="md">UTXO lookup (NowNodes Blockbook)</Heading>
+                  <Text color="gray.500">
+                    Provide an optional NowNodes API key to avoid rate limiting. We query UTXOs using the account zpub to stay in the p2wpkh scope.
+                  </Text>
+                  <InputGroup>
+                    <InputLeftAddon>API key</InputLeftAddon>
+                    <Input
+                      placeholder="Optional NowNodes api-key header (sent via dev proxy)"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                    />
+                  </InputGroup>
+                  <Button colorScheme="purple" onClick={handleFetchUtxos} isLoading={loadingUtxo} alignSelf="flex-start">
+                    Fetch UTXOs for zpub
+                  </Button>
+                  {error && (
+                    <Alert status="error" borderRadius="md">
+                      <AlertIcon />
+                      <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                  )}
+                  <UtxoList utxos={utxos} pathLookup={addressMap} />
+                </Stack>
+              </Box>
+            </Stack>
+          </TabPanel>
+
+          <TabPanel px={0}>
+            <TransactionBuilderView mnemonic={mnemonic} utxos={utxos} addresses={addresses} apiKey={apiKey || undefined} />
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
     </Container>
   );
 }
