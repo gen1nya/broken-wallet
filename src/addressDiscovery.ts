@@ -82,6 +82,12 @@ function updateMaxIndex(indices: MaxIndices, addr: DerivedAddress) {
 /**
  * Derives wallet addresses with automatic discovery based on transaction history.
  * Uses BIP44 gap limit concept: derives up to max_used_index + gap addresses.
+ *
+ * Uses iterative approach:
+ * 1. Derive initial batch of addresses
+ * 2. Scan transactions to find max used index
+ * 3. If we found addresses near the end of our batch, derive more
+ * 4. Repeat until we have enough gap after last used address
  */
 export function deriveWalletWithDiscovery(
   mnemonic: string,
@@ -92,47 +98,75 @@ export function deriveWalletWithDiscovery(
   segwitAddresses: DerivedAddress[];
   legacyAddresses: DerivedAddress[];
 } {
-  // First pass: derive minimum addresses
-  const initial = deriveWalletFromMnemonic(mnemonic, {
-    receiveCount: minAddresses,
-    changeCount: minAddresses,
-  });
+  let currentCount = Math.max(minAddresses, 100); // Start with at least 100 addresses
+  let maxIterations = 10;
+  let iteration = 0;
 
-  const initialAddresses = [
-    ...initial.segwitAccount.addresses,
-    ...initial.legacyAccount.addresses,
-  ];
+  while (iteration < maxIterations) {
+    iteration++;
 
-  // Find max used indices
-  const maxIndices = findMaxUsedIndices(transactions, initialAddresses);
+    // Derive addresses for current count
+    const wallet = deriveWalletFromMnemonic(mnemonic, {
+      receiveCount: currentCount,
+      changeCount: currentCount,
+    });
 
-  // Calculate how many addresses we need for each chain
-  const segwitReceiveCount = Math.max(
-    minAddresses,
-    maxIndices.segwitReceive + gapLimit + 1
-  );
-  const segwitChangeCount = Math.max(
-    minAddresses,
-    maxIndices.segwitChange + gapLimit + 1
-  );
-  const legacyReceiveCount = Math.max(
-    minAddresses,
-    maxIndices.legacyReceive + gapLimit + 1
-  );
-  const legacyChangeCount = Math.max(
-    minAddresses,
-    maxIndices.legacyChange + gapLimit + 1
-  );
+    const allAddresses = [
+      ...wallet.segwitAccount.addresses,
+      ...wallet.legacyAccount.addresses,
+    ];
 
-  // Derive full address set
+    // Find max used indices
+    const maxIndices = findMaxUsedIndices(transactions, allAddresses);
+
+    // Calculate required counts based on max indices
+    const requiredCounts = {
+      segwitReceive: maxIndices.segwitReceive + gapLimit + 1,
+      segwitChange: maxIndices.segwitChange + gapLimit + 1,
+      legacyReceive: maxIndices.legacyReceive + gapLimit + 1,
+      legacyChange: maxIndices.legacyChange + gapLimit + 1,
+    };
+
+    const maxRequired = Math.max(
+      requiredCounts.segwitReceive,
+      requiredCounts.segwitChange,
+      requiredCounts.legacyReceive,
+      requiredCounts.legacyChange,
+      minAddresses
+    );
+
+    // If current count is sufficient, we're done
+    if (currentCount >= maxRequired) {
+      // Derive final address set with exact counts
+      const segwitWallet = deriveWalletFromMnemonic(mnemonic, {
+        receiveCount: Math.max(minAddresses, requiredCounts.segwitReceive),
+        changeCount: Math.max(minAddresses, requiredCounts.segwitChange),
+      });
+
+      const legacyWallet = deriveWalletFromMnemonic(mnemonic, {
+        receiveCount: Math.max(minAddresses, requiredCounts.legacyReceive),
+        changeCount: Math.max(minAddresses, requiredCounts.legacyChange),
+      });
+
+      return {
+        segwitAddresses: segwitWallet.segwitAccount.addresses,
+        legacyAddresses: legacyWallet.legacyAccount.addresses,
+      };
+    }
+
+    // Need more addresses, double the count
+    currentCount = Math.min(maxRequired * 2, 10000); // Cap at 10000 to prevent infinite growth
+  }
+
+  // Fallback: return what we have
   const segwitWallet = deriveWalletFromMnemonic(mnemonic, {
-    receiveCount: segwitReceiveCount,
-    changeCount: segwitChangeCount,
+    receiveCount: currentCount,
+    changeCount: currentCount,
   });
 
   const legacyWallet = deriveWalletFromMnemonic(mnemonic, {
-    receiveCount: legacyReceiveCount,
-    changeCount: legacyChangeCount,
+    receiveCount: currentCount,
+    changeCount: currentCount,
   });
 
   return {

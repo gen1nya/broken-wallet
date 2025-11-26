@@ -138,3 +138,55 @@ export async function fetchTransactions(
   const data = await response.json();
   return data as TransactionsResponse;
 }
+
+/**
+ * Fetches ALL transactions for an xpub by paginating through all pages.
+ * Returns a combined response with all transactions.
+ */
+export async function fetchAllTransactions(
+  xpub: string,
+  network: NetworkSymbol = 'btc',
+  pageSize: number = 1000,
+  onProgress?: (current: number, total: number) => void
+): Promise<TransactionsResponse> {
+  // Fetch first page to get total page count
+  const firstPage = await fetchTransactions(xpub, network, pageSize, 1);
+
+  if (!firstPage.totalPages || firstPage.totalPages <= 1) {
+    // Only one page, return as is
+    onProgress?.(1, 1);
+    return firstPage;
+  }
+
+  // Fetch remaining pages in parallel (but limit concurrency to avoid overwhelming the server)
+  const totalPages = firstPage.totalPages;
+  const allTransactions: BlockbookTransaction[] = [...(firstPage.transactions ?? [])];
+
+  // Fetch pages in batches of 5 to avoid too many concurrent requests
+  const batchSize = 5;
+  for (let startPage = 2; startPage <= totalPages; startPage += batchSize) {
+    const endPage = Math.min(startPage + batchSize - 1, totalPages);
+    const pagePromises = [];
+
+    for (let page = startPage; page <= endPage; page++) {
+      pagePromises.push(fetchTransactions(xpub, network, pageSize, page));
+    }
+
+    const results = await Promise.all(pagePromises);
+    results.forEach(result => {
+      if (result.transactions) {
+        allTransactions.push(...result.transactions);
+      }
+    });
+
+    onProgress?.(endPage, totalPages);
+  }
+
+  // Return combined response
+  return {
+    ...firstPage,
+    transactions: allTransactions,
+    page: 1,
+    totalPages: totalPages,
+  };
+}

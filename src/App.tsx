@@ -13,9 +13,7 @@ import {
   HStack,
   Heading,
   Icon,
-  Input,
-  InputGroup,
-  InputLeftAddon,
+  Progress,
   Stack,
   Table,
   Tbody,
@@ -36,13 +34,14 @@ import {
   VStack,
 } from '@chakra-ui/react';
 import { useEffect, useMemo, useState } from 'react';
-import { FaMoon, FaSun, FaWallet, FaKey } from 'react-icons/fa';
-import { BlockbookUtxo, fetchUtxos, fetchTransactions, BlockbookTransaction } from './blockbookClient';
+import { FaMoon, FaSun, FaWallet, FaKey, FaMap } from 'react-icons/fa';
+import { BlockbookUtxo, fetchUtxos, fetchAllTransactions, BlockbookTransaction } from './blockbookClient';
 import { DerivedAddress, createRandomMnemonic, deriveWalletFromMnemonic } from './bitcoin';
 import TransactionBuilderView from './TransactionBuilderView';
 import AddressModal from './AddressModal';
 import TransactionList from './TransactionList';
 import TransactionDetailsModal from './TransactionDetailsModal';
+import AddressMapModal from './AddressMapModal';
 import { deriveWalletWithDiscovery } from './addressDiscovery';
 
 function ColorModeToggle() {
@@ -164,6 +163,7 @@ function App() {
   const accent = useColorModeValue('purple.600', 'purple.300');
   const { isOpen, onOpen, onClose } = useDisclosure();
   const { isOpen: isTxModalOpen, onOpen: onTxModalOpen, onClose: onTxModalClose } = useDisclosure();
+  const { isOpen: isMapModalOpen, onOpen: onMapModalOpen, onClose: onMapModalClose } = useDisclosure();
 
   const [mnemonic, setMnemonic] = useState('');
   const [accountZpub, setAccountZpub] = useState('');
@@ -176,6 +176,11 @@ function App() {
   const [loadingUtxo, setLoadingUtxo] = useState(false);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [txProgress, setTxProgress] = useState<{ current: number; total: number } | null>(null);
+
+  // Constants for transaction fetching
+  const TX_PAGE_SIZE = 1000; // Max page size supported by NowNodes
+  const GAP_LIMIT = 20; // BIP44 standard gap limit
 
   const allAddresses = useMemo(() => [...segwitAddresses, ...legacyAddresses], [segwitAddresses, legacyAddresses]);
   const addressMap = useMemo(() => new Map(allAddresses.map((addr) => [addr.address, addr])), [allAddresses]);
@@ -219,11 +224,16 @@ function App() {
   const handleFetchTransactions = async () => {
     setLoadingTransactions(true);
     setError(null);
+    setTxProgress(null);
     try {
-      // Fetch transactions for both segwit and legacy accounts
+      // Fetch ALL transactions for both segwit and legacy accounts with pagination
       const [segwitTxs, legacyTxs] = await Promise.all([
-        fetchTransactions(accountZpub, 'btc', 20, 1),
-        fetchTransactions(accountXpub, 'btc', 20, 1),
+        fetchAllTransactions(accountZpub, 'btc', TX_PAGE_SIZE, (current, total) => {
+          setTxProgress({ current, total });
+        }),
+        fetchAllTransactions(accountXpub, 'btc', TX_PAGE_SIZE, (current, total) => {
+          setTxProgress({ current, total });
+        }),
       ]);
 
       // Combine and deduplicate transactions by txid
@@ -242,8 +252,9 @@ function App() {
       setTransactions(uniqueTxs);
 
       // Auto-expand address pool based on transaction history
+      // Using BIP44 standard gap limit (20 addresses)
       if (mnemonic && uniqueTxs.length > 0) {
-        const discovered = deriveWalletWithDiscovery(mnemonic, uniqueTxs, 20, 5);
+        const discovered = deriveWalletWithDiscovery(mnemonic, uniqueTxs, GAP_LIMIT, 5);
         setSegwitAddresses(discovered.segwitAddresses);
         setLegacyAddresses(discovered.legacyAddresses);
       }
@@ -251,6 +262,7 @@ function App() {
       setError(err instanceof Error ? err.message : 'Failed to fetch transactions');
     } finally {
       setLoadingTransactions(false);
+      setTxProgress(null);
     }
   };
 
@@ -356,13 +368,39 @@ function App() {
 
               <Box p={6} rounded="lg" bg={panelBg} shadow="md">
                 <Stack spacing={4}>
-                  <Heading size="md">Transaction History</Heading>
+                  <HStack justify="space-between">
+                    <Heading size="md">Transaction History</Heading>
+                    <Button
+                      size="sm"
+                      leftIcon={<Icon as={FaMap} />}
+                      colorScheme="purple"
+                      variant="outline"
+                      onClick={onMapModalOpen}
+                      isDisabled={transactions.length === 0}
+                    >
+                      Address Map
+                    </Button>
+                  </HStack>
                   <Text color="gray.500">
-                    View transaction history for both segwit and legacy accounts. Click on a transaction to see detailed information.
+                    View transaction history for both segwit and legacy accounts. All transaction pages will be fetched automatically with BIP44 standard gap limit (20 addresses). Click on a transaction to see detailed information.
                   </Text>
                   <Button colorScheme="purple" onClick={handleFetchTransactions} isLoading={loadingTransactions} alignSelf="flex-start">
-                    Fetch Transactions
+                    Fetch All Transactions
                   </Button>
+                  {loadingTransactions && txProgress && (
+                    <Box>
+                      <Text fontSize="sm" color="gray.500" mb={2}>
+                        Loading page {txProgress.current} of {txProgress.total}...
+                      </Text>
+                      <Progress
+                        value={(txProgress.current / txProgress.total) * 100}
+                        colorScheme="purple"
+                        size="sm"
+                        hasStripe
+                        isAnimated
+                      />
+                    </Box>
+                  )}
                   {error && (
                     <Alert status="error" borderRadius="md">
                       <AlertIcon />
@@ -387,6 +425,13 @@ function App() {
         onClose={onTxModalClose}
         transaction={selectedTransaction}
         addressMap={addressMap}
+      />
+      <AddressMapModal
+        isOpen={isMapModalOpen}
+        onClose={onMapModalClose}
+        segwitAddresses={segwitAddresses}
+        legacyAddresses={legacyAddresses}
+        transactions={transactions}
       />
     </Container>
   );
