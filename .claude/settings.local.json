@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "Bash(npm run dev:*)",
+      "Bash(timeout:*)",
+      "Bash(exit 0)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(curl:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd backend API proxy for NowNodes Blockbook\n\nFeatures:\n- Express + TypeScript backend in /server directory\n- Multi-currency support (BTC, DOGE, LTC, DASH)\n- Secure API key management via environment variables\n- CORS protection and rate limiting (100 req/min)\n- Frontend integration via updated blockbookClient.ts\n\nEndpoints:\n- GET /health - Health check\n- GET /api/networks - List supported networks\n- POST /api/:network/utxo - Fetch UTXOs\n- POST /api/:network/broadcast - Broadcast transactions\n- GET /api/:network/info - Network info\n\nDocumentation:\n- README.md updated with setup instructions\n- CLAUDE.md added with architecture details\n- ROADMAP.md added with development plan\n- server/deploy.md added with VPS deployment guide\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(npm install:*)",
+      "Bash(npm test:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
