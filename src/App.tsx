@@ -62,8 +62,13 @@ const formatBtc = (value: string | number) => {
 function CompactAddressPreview({ addresses }: { addresses: DerivedAddress[] }) {
   const badgeColor = useColorModeValue('purple.600', 'purple.300');
 
-  // Show first 2 addresses from each type/format combination
-  const preview = addresses.slice(0, 4);
+  // Show one address from each type/format combination
+  const preview = [
+    addresses.find((a) => a.format === 'p2wpkh' && a.type === 'receive'),
+    addresses.find((a) => a.format === 'p2wpkh' && a.type === 'change'),
+    addresses.find((a) => a.format === 'p2pkh' && a.type === 'receive'),
+    addresses.find((a) => a.format === 'p2pkh' && a.type === 'change'),
+  ].filter((addr): addr is DerivedAddress => addr !== undefined);
 
   return (
     <VStack align="stretch" spacing={2}>
@@ -274,7 +279,7 @@ function App() {
                     </Button>
                   </HStack>
                   <Text fontSize="sm" color="gray.500">
-                    Preview of derived addresses (showing first 4)
+                    One address from each chain (Segwit/Legacy × Receive/Change)
                   </Text>
                   <CompactAddressPreview addresses={allAddresses} />
                 </Stack>
