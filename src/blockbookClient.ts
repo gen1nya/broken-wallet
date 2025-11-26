@@ -8,48 +8,57 @@ export interface BlockbookUtxo {
   path?: string;
 }
 
-export const BLOCKBOOK_BASE = import.meta.env.DEV ? '/nownodes/api/v2' : 'https://btcbook.nownodes.io/api/v2';
+export type NetworkSymbol = 'btc' | 'doge' | 'ltc' | 'dash';
 
-export async function fetchUtxos(zpub: string, apiKey?: string): Promise<BlockbookUtxo[]> {
-  const response = await fetch(`${BLOCKBOOK_BASE}/utxo/${encodeURIComponent(zpub)}?pageSize=200`, {
-    headers: apiKey ? { 'api-key': apiKey } : undefined,
-  });
+// Use backend API in both dev and production
+const API_BASE = import.meta.env.DEV ? 'http://localhost:3001/api' : '/api';
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Failed to load UTXOs (${response.status}): ${text}`);
-  }
-
-  const data = await response.json();
-  if (!Array.isArray(data)) {
-    throw new Error('Unexpected UTXO response');
-  }
-
-  return data as BlockbookUtxo[];
-}
-
-export async function broadcastTransaction(hex: string, apiKey?: string): Promise<string> {
-  const response = await fetch(`${BLOCKBOOK_BASE}/tx/send`, {
+export async function fetchUtxos(
+  xpub: string,
+  network: NetworkSymbol = 'btc',
+  pageSize: number = 200
+): Promise<BlockbookUtxo[]> {
+  const response = await fetch(`${API_BASE}/${network}/utxo`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(apiKey ? { 'api-key': apiKey } : {}),
+    },
+    body: JSON.stringify({ xpub, pageSize }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+    throw new Error(`Failed to load UTXOs (${response.status}): ${error.message || error.error}`);
+  }
+
+  const data = await response.json();
+  if (!Array.isArray(data.utxos)) {
+    throw new Error('Unexpected UTXO response');
+  }
+
+  return data.utxos as BlockbookUtxo[];
+}
+
+export async function broadcastTransaction(
+  hex: string,
+  network: NetworkSymbol = 'btc'
+): Promise<string> {
+  const response = await fetch(`${API_BASE}/${network}/broadcast`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify({ hex }),
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Broadcast failed (${response.status}): ${text}`);
+    const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+    throw new Error(`Broadcast failed (${response.status}): ${error.message || error.error}`);
   }
 
   const data = await response.json();
-  if (typeof data === 'string') {
-    return data;
-  }
-
-  if (data?.txid || data?.result) {
-    return (data.txid as string) || (data.result as string);
+  if (data?.txid) {
+    return data.txid as string;
   }
 
   throw new Error('Unexpected broadcast response');

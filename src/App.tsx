@@ -163,7 +163,6 @@ function App() {
   const [accountZpub, setAccountZpub] = useState('');
   const [addresses, setAddresses] = useState<DerivedAddress[]>([]);
   const [utxos, setUtxos] = useState<BlockbookUtxo[]>([]);
-  const [apiKey, setApiKey] = useState('');
   const [loadingUtxo, setLoadingUtxo] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -190,7 +189,7 @@ function App() {
     setLoadingUtxo(true);
     setError(null);
     try {
-      const results = await fetchUtxos(accountZpub, apiKey || undefined);
+      const results = await fetchUtxos(accountZpub, 'btc');
       setUtxos(results);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch UTXOs');
@@ -256,18 +255,10 @@ function App() {
 
               <Box p={6} rounded="lg" bg={panelBg} shadow="md">
                 <Stack spacing={4}>
-                  <Heading size="md">UTXO lookup (NowNodes Blockbook)</Heading>
+                  <Heading size="md">UTXO lookup (via Backend)</Heading>
                   <Text color="gray.500">
-                    Provide an optional NowNodes API key to avoid rate limiting. We query UTXOs using the account zpub to stay in the p2wpkh scope.
+                    Query UTXOs using the account zpub. API calls are proxied through our backend server.
                   </Text>
-                  <InputGroup>
-                    <InputLeftAddon>API key</InputLeftAddon>
-                    <Input
-                      placeholder="Optional NowNodes api-key header (sent via dev proxy)"
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                    />
-                  </InputGroup>
                   <Button colorScheme="purple" onClick={handleFetchUtxos} isLoading={loadingUtxo} alignSelf="flex-start">
                     Fetch UTXOs for zpub
                   </Button>
@@ -284,7 +275,7 @@ function App() {
           </TabPanel>
 
           <TabPanel px={0}>
-            <TransactionBuilderView mnemonic={mnemonic} utxos={utxos} addresses={addresses} apiKey={apiKey || undefined} />
+            <TransactionBuilderView mnemonic={mnemonic} utxos={utxos} addresses={addresses} />
           </TabPanel>
         </TabPanels>
       </Tabs>

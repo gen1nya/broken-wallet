@@ -5,3 +5,18 @@ yarn-error.log*
 .pnpm-debug.log*
 dist
 *.tsbuildinfo
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

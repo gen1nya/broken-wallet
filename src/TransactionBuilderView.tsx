@@ -42,7 +42,6 @@ interface Props {
   mnemonic: string;
   utxos: BlockbookUtxo[];
   addresses: DerivedAddress[];
-  apiKey?: string;
 }
 
 const formatBtc = (value: bigint) => {
@@ -50,7 +49,7 @@ const formatBtc = (value: bigint) => {
   return `${btc.toFixed(8)} BTC (${value.toString()} sats)`;
 };
 
-export function TransactionBuilderView({ mnemonic, utxos, addresses, apiKey }: Props) {
+export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
   const panelBg = useColorModeValue('gray.50', 'gray.800');
   const accent = useColorModeValue('purple.600', 'purple.300');
 
@@ -156,7 +155,7 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses, apiKey }: P
     setError(null);
     setBroadcastedTxId(null);
     try {
-      const txid = await broadcastTransaction(rawTx, apiKey);
+      const txid = await broadcastTransaction(rawTx, 'btc');
       setBroadcastedTxId(txid);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Broadcast failed');
@@ -288,7 +287,7 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses, apiKey }: P
               isDisabled={!rawTx}
               isLoading={broadcasting}
             >
-              Broadcast via NowNodes
+              Broadcast via Backend
             </Button>
           </HStack>
 
