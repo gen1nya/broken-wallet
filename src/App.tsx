@@ -2,6 +2,7 @@ import {
   Alert,
   AlertDescription,
   AlertIcon,
+  Badge,
   Box,
   Button,
   Code,
@@ -31,12 +32,15 @@ import {
   Tabs,
   useColorMode,
   useColorModeValue,
+  useDisclosure,
+  VStack,
 } from '@chakra-ui/react';
 import { useEffect, useMemo, useState } from 'react';
-import { FaMoon, FaSun, FaWallet } from 'react-icons/fa';
+import { FaMoon, FaSun, FaWallet, FaKey } from 'react-icons/fa';
 import { BlockbookUtxo, fetchUtxos } from './blockbookClient';
 import { DerivedAddress, createRandomMnemonic, deriveWalletFromMnemonic } from './bitcoin';
 import TransactionBuilderView from './TransactionBuilderView';
+import AddressModal from './AddressModal';
 
 function ColorModeToggle() {
   const { colorMode, toggleColorMode } = useColorMode();
@@ -55,41 +59,33 @@ const formatBtc = (value: string | number) => {
   return `${btc.toFixed(8)} BTC (${sats.toString()} sats)`;
 };
 
-function AddressTable({ addresses }: { addresses: DerivedAddress[] }) {
+function CompactAddressPreview({ addresses }: { addresses: DerivedAddress[] }) {
   const badgeColor = useColorModeValue('purple.600', 'purple.300');
+
+  // Show first 2 addresses from each type/format combination
+  const preview = addresses.slice(0, 4);
+
   return (
-    <Box borderWidth="1px" borderRadius="lg" overflow="hidden">
-      <Table size="sm">
-        <Thead>
-          <Tr>
-            <Th>Type</Th>
-            <Th>Path</Th>
-            <Th>Address</Th>
-            <Th>PubKey</Th>
-          </Tr>
-        </Thead>
-        <Tbody>
-          {addresses.map((addr) => (
-            <Tr key={addr.path}>
-              <Td>
-                <Text fontWeight="semibold" color={badgeColor} textTransform="capitalize">
-                  {addr.type}
-                </Text>
-              </Td>
-              <Td fontFamily="mono" fontSize="sm">
-                {addr.path}
-              </Td>
-              <Td fontFamily="mono" fontSize="sm" wordBreak="break-all">
-                {addr.address}
-              </Td>
-              <Td fontFamily="mono" fontSize="xs" wordBreak="break-all">
-                {addr.publicKey}
-              </Td>
-            </Tr>
-          ))}
-        </Tbody>
-      </Table>
-    </Box>
+    <VStack align="stretch" spacing={2}>
+      {preview.map((addr) => (
+        <HStack key={addr.path} spacing={3} fontSize="sm">
+          <Badge colorScheme="purple" minW="60px">
+            {addr.format === 'p2wpkh' ? 'Segwit' : 'Legacy'}
+          </Badge>
+          <Badge colorScheme={addr.type === 'receive' ? 'green' : 'blue'} minW="60px">
+            {addr.type}
+          </Badge>
+          <Code fontFamily="mono" fontSize="xs" flex={1} isTruncated>
+            {addr.address}
+          </Code>
+        </HStack>
+      ))}
+      {addresses.length > 4 && (
+        <Text fontSize="xs" color="gray.500" textAlign="center">
+          ... and {addresses.length - 4} more addresses
+        </Text>
+      )}
+    </VStack>
   );
 }
 
@@ -158,6 +154,7 @@ function UtxoList({ utxos, pathLookup }: { utxos: BlockbookUtxo[]; pathLookup: M
 function App() {
   const panelBg = useColorModeValue('gray.50', 'gray.800');
   const accent = useColorModeValue('purple.600', 'purple.300');
+  const { isOpen, onOpen, onClose } = useDisclosure();
 
   const [mnemonic, setMnemonic] = useState('');
   const [accountZpub, setAccountZpub] = useState('');
@@ -249,32 +246,37 @@ function App() {
               </Box>
 
               <Box p={6} rounded="lg" bg={panelBg} shadow="md">
-                <Stack spacing={3}>
-                  <Heading size="md">Native Segwit Account (BIP84 m/84&#39;/0&#39;/0&#39;)</Heading>
-                  <Text fontSize="sm" color="gray.500">zpub (for P2WPKH addresses starting with bc1)</Text>
-                  <Textarea value={accountZpub} isReadOnly fontFamily="mono" rows={2} />
-                </Stack>
-              </Box>
+                <Stack spacing={4}>
+                  <Heading size="md">Account Keys</Heading>
+                  <Grid templateColumns="auto 1fr" gap={3} alignItems="center">
+                    <Text fontSize="sm" fontWeight="semibold">Segwit (BIP84):</Text>
+                    <Code fontFamily="mono" fontSize="xs" p={2} isTruncated>
+                      {accountZpub}
+                    </Code>
 
-              <Box p={6} rounded="lg" bg={panelBg} shadow="md">
-                <Stack spacing={3}>
-                  <Heading size="md">Legacy Account (BIP44 m/44&#39;/0&#39;/0&#39;)</Heading>
-                  <Text fontSize="sm" color="gray.500">xpub (for P2PKH addresses starting with 1)</Text>
-                  <Textarea value={accountXpub} isReadOnly fontFamily="mono" rows={2} />
+                    <Text fontSize="sm" fontWeight="semibold">Legacy (BIP44):</Text>
+                    <Code fontFamily="mono" fontSize="xs" p={2} isTruncated>
+                      {accountXpub}
+                    </Code>
+                  </Grid>
+                  <Text fontSize="xs" color="gray.500">
+                    zpub for P2WPKH (bc1...) • xpub for P2PKH (1...)
+                  </Text>
                 </Stack>
               </Box>
 
               <Box p={6} rounded="lg" bg={panelBg} shadow="md">
                 <Stack spacing={4}>
-                  <Heading size="md">Segwit Addresses (P2WPKH)</Heading>
-                  <AddressTable addresses={segwitAddresses} />
-                </Stack>
-              </Box>
-
-              <Box p={6} rounded="lg" bg={panelBg} shadow="md">
-                <Stack spacing={4}>
-                  <Heading size="md">Legacy Addresses (P2PKH)</Heading>
-                  <AddressTable addresses={legacyAddresses} />
+                  <HStack justify="space-between">
+                    <Heading size="md">Derived Addresses</Heading>
+                    <Button size="sm" leftIcon={<Icon as={FaKey} />} colorScheme="purple" variant="outline" onClick={onOpen}>
+                      Manage Addresses
+                    </Button>
+                  </HStack>
+                  <Text fontSize="sm" color="gray.500">
+                    Preview of derived addresses (showing first 4)
+                  </Text>
+                  <CompactAddressPreview addresses={allAddresses} />
                 </Stack>
               </Box>
 
@@ -304,6 +306,8 @@ function App() {
           </TabPanel>
         </TabPanels>
       </Tabs>
+
+      <AddressModal isOpen={isOpen} onClose={onClose} mnemonic={mnemonic} />
     </Container>
   );
 }
