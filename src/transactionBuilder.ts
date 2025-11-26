@@ -93,7 +93,7 @@ function estimateInputWeight(type: AddressEncoding): number {
   return type === 'p2wpkh' ? 68 : 148;
 }
 
-function buildPayments(address: string, pubkey?: Buffer) {
+function buildPayments(address: string) {
   const network = getNetwork();
   const type = detectAddressType(address);
   if (!type) {
@@ -105,14 +105,14 @@ function buildPayments(address: string, pubkey?: Buffer) {
   }
 
   if (type === 'p2wpkh') {
-    const payment = bitcoin.payments.p2wpkh({ address, pubkey, network });
+    const payment = bitcoin.payments.p2wpkh({ address, network });
     if (!payment.output) {
       throw new Error('Failed to derive p2wpkh payment');
     }
     return { type, payment };
   }
 
-  const payment = bitcoin.payments.p2pkh({ address, pubkey, network });
+  const payment = bitcoin.payments.p2pkh({ address, network });
   if (!payment.output) {
     throw new Error('Failed to derive p2pkh payment');
   }
@@ -217,7 +217,7 @@ export async function buildSignedTransaction(
       throw new Error(`Missing key material for ${derivation}`);
     }
 
-    const { payment } = buildPayments(utxo.address ?? '', Buffer.from(node.publicKey));
+    const { payment } = buildPayments(utxo.address ?? '');
 
     psbt.addInput({
       hash: utxo.txid,
@@ -226,13 +226,6 @@ export async function buildSignedTransaction(
         script: payment.output!,
         value: Number(utxo.value),
       },
-      bip32Derivation: [
-        {
-          masterFingerprint: fingerprintBuffer(account),
-          path: derivation,
-          pubkey: Buffer.from(node.publicKey),
-        },
-      ],
     });
 
     signers.push({ signer: createPsbtSigner(node.privateKey), index: psbt.inputCount - 1 });
