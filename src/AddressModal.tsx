@@ -45,12 +45,19 @@ export default function AddressModal({ isOpen, onClose, mnemonic }: AddressModal
   const badgeColor = useColorModeValue('purple.600', 'purple.300');
 
   const handleGenerate = () => {
-    const wallet = deriveWalletFromMnemonic(mnemonic, count);
+    // Generate double the count to ensure we have enough change addresses
+    // (deriveWalletFromMnemonic generates change addresses as floor(count/2))
+    const generateCount = chain === 'change' ? count * 2 : count;
+    const wallet = deriveWalletFromMnemonic(mnemonic, generateCount);
+
     const sourceAddresses = format === 'segwit'
       ? wallet.segwitAccount.addresses
       : wallet.legacyAccount.addresses;
 
-    const filtered = sourceAddresses.filter(addr => addr.type === chain);
+    const filtered = sourceAddresses
+      .filter(addr => addr.type === chain)
+      .slice(0, count); // Take exactly the requested count
+
     setAddresses(filtered);
   };
 
