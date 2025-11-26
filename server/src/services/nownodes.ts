@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import { getNetwork } from '../config/networks.js';
-import { BlockbookUtxo, BroadcastResponse, NetworkSymbol } from '../types';
+import { BlockbookUtxo, BroadcastResponse, NetworkSymbol, TransactionsResponse } from '../types';
 
 /**
  * Service for interacting with NowNodes Blockbook API
@@ -87,6 +87,42 @@ export class NowNodesService {
         const status = error.response?.status || 500;
         const message = error.response?.data?.error || error.message;
         throw new Error(`Broadcast failed (${status}): ${message}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch transactions for a given xpub/zpub/ypub
+   */
+  async fetchTransactions(
+    network: NetworkSymbol,
+    xpub: string,
+    pageSize: number = 20,
+    page: number = 1
+  ): Promise<TransactionsResponse> {
+    const networkConfig = getNetwork(network);
+    const url = `${networkConfig.blockbookUrl}/api/v2/xpub/${encodeURIComponent(xpub)}`;
+
+    try {
+      const response = await axios.get(url, {
+        headers: {
+          'api-key': this.apiKey,
+        },
+        params: {
+          details: 'txs',
+          pageSize,
+          page,
+        },
+        timeout: 30000,
+      });
+
+      return response.data as TransactionsResponse;
+    } catch (error) {
+      if (error instanceof AxiosError) {
+        const status = error.response?.status || 500;
+        const message = error.response?.data?.error || error.message;
+        throw new Error(`NowNodes API error (${status}): ${message}`);
       }
       throw error;
     }

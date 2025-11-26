@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { NowNodesService } from '../services/nownodes.js';
 import { NETWORKS, isSupportedNetwork } from '../config/networks.js';
-import { NetworkSymbol, UtxoRequest, BroadcastRequest } from '../types/index.js';
+import { NetworkSymbol, UtxoRequest, BroadcastRequest, TransactionRequest } from '../types/index.js';
 
 const router = Router();
 
@@ -111,6 +111,48 @@ router.post('/:network/broadcast', async (req: Request, res: Response) => {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({
       error: 'Broadcast failed',
+      message,
+    });
+  }
+});
+
+/**
+ * POST /api/:network/transactions
+ * Fetch transactions for a given xpub/zpub/ypub
+ *
+ * Body: { xpub: string, pageSize?: number, page?: number }
+ */
+router.post('/:network/transactions', async (req: Request, res: Response) => {
+  try {
+    const { network } = req.params;
+    const { xpub, pageSize = 20, page = 1 } = req.body as TransactionRequest;
+
+    if (!isSupportedNetwork(network)) {
+      return res.status(400).json({
+        error: 'Invalid network',
+        message: `Network '${network}' is not supported`,
+      });
+    }
+
+    if (!xpub || typeof xpub !== 'string') {
+      return res.status(400).json({
+        error: 'Invalid request',
+        message: 'xpub is required',
+      });
+    }
+
+    const data = await getNowNodesService().fetchTransactions(
+      network as NetworkSymbol,
+      xpub,
+      pageSize,
+      page
+    );
+
+    res.json(data);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Failed to fetch transactions',
       message,
     });
   }

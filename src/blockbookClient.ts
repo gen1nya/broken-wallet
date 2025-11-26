@@ -9,6 +9,57 @@ export interface BlockbookUtxo {
   hex?: string; // Full previous transaction hex (needed for P2PKH signing)
 }
 
+export interface TransactionInput {
+  txid: string;
+  vout: number;
+  sequence?: number;
+  n: number;
+  addresses?: string[];
+  isAddress?: boolean;
+  isOwn?: boolean;
+  value: string;
+  hex?: string;
+}
+
+export interface TransactionOutput {
+  value: string;
+  n: number;
+  hex?: string;
+  addresses?: string[];
+  isAddress?: boolean;
+  isOwn?: boolean;
+  spent?: boolean;
+}
+
+export interface BlockbookTransaction {
+  txid: string;
+  version?: number;
+  vin: TransactionInput[];
+  vout: TransactionOutput[];
+  blockHash?: string;
+  blockHeight?: number;
+  confirmations?: number;
+  blockTime?: number;
+  value: string;
+  valueIn: string;
+  fees: string;
+  hex?: string;
+}
+
+export interface TransactionsResponse {
+  page?: number;
+  totalPages?: number;
+  itemsOnPage?: number;
+  address?: string;
+  balance?: string;
+  totalReceived?: string;
+  totalSent?: string;
+  unconfirmedBalance?: string;
+  unconfirmedTxs?: number;
+  txs?: number;
+  transactions?: BlockbookTransaction[];
+}
+
 export type NetworkSymbol = 'btc' | 'doge' | 'ltc' | 'dash';
 
 // Use backend API in both dev and production
@@ -63,4 +114,27 @@ export async function broadcastTransaction(
   }
 
   throw new Error('Unexpected broadcast response');
+}
+
+export async function fetchTransactions(
+  xpub: string,
+  network: NetworkSymbol = 'btc',
+  pageSize: number = 20,
+  page: number = 1
+): Promise<TransactionsResponse> {
+  const response = await fetch(`${API_BASE}/${network}/transactions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ xpub, pageSize, page }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+    throw new Error(`Failed to load transactions (${response.status}): ${error.message || error.error}`);
+  }
+
+  const data = await response.json();
+  return data as TransactionsResponse;
 }

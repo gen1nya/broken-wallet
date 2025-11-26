@@ -14,6 +14,7 @@ export interface DerivedAddress {
   publicKey: string;
   type: AddressType;
   format: AddressFormat;
+  index: number;
 }
 
 export interface WalletDerivation {
@@ -70,6 +71,7 @@ function deriveSegwitAddress(account: HDKey, chain: number, index: number, type:
       .join(''),
     type,
     format: 'p2wpkh',
+    index,
   };
 }
 
@@ -90,6 +92,7 @@ function deriveLegacyAddress(account: HDKey, chain: number, index: number, type:
       .join(''),
     type,
     format: 'p2pkh',
+    index,
   };
 }
 

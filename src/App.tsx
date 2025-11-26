@@ -37,10 +37,13 @@ import {
 } from '@chakra-ui/react';
 import { useEffect, useMemo, useState } from 'react';
 import { FaMoon, FaSun, FaWallet, FaKey } from 'react-icons/fa';
-import { BlockbookUtxo, fetchUtxos } from './blockbookClient';
+import { BlockbookUtxo, fetchUtxos, fetchTransactions, BlockbookTransaction } from './blockbookClient';
 import { DerivedAddress, createRandomMnemonic, deriveWalletFromMnemonic } from './bitcoin';
 import TransactionBuilderView from './TransactionBuilderView';
 import AddressModal from './AddressModal';
+import TransactionList from './TransactionList';
+import TransactionDetailsModal from './TransactionDetailsModal';
+import { deriveWalletWithDiscovery } from './addressDiscovery';
 
 function ColorModeToggle() {
   const { colorMode, toggleColorMode } = useColorMode();
@@ -160,6 +163,7 @@ function App() {
   const panelBg = useColorModeValue('gray.50', 'gray.800');
   const accent = useColorModeValue('purple.600', 'purple.300');
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const { isOpen: isTxModalOpen, onOpen: onTxModalOpen, onClose: onTxModalClose } = useDisclosure();
 
   const [mnemonic, setMnemonic] = useState('');
   const [accountZpub, setAccountZpub] = useState('');
@@ -167,7 +171,10 @@ function App() {
   const [segwitAddresses, setSegwitAddresses] = useState<DerivedAddress[]>([]);
   const [legacyAddresses, setLegacyAddresses] = useState<DerivedAddress[]>([]);
   const [utxos, setUtxos] = useState<BlockbookUtxo[]>([]);
+  const [transactions, setTransactions] = useState<BlockbookTransaction[]>([]);
+  const [selectedTransaction, setSelectedTransaction] = useState<BlockbookTransaction | null>(null);
   const [loadingUtxo, setLoadingUtxo] = useState(false);
+  const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const allAddresses = useMemo(() => [...segwitAddresses, ...legacyAddresses], [segwitAddresses, legacyAddresses]);
@@ -207,6 +214,49 @@ function App() {
     } finally {
       setLoadingUtxo(false);
     }
+  };
+
+  const handleFetchTransactions = async () => {
+    setLoadingTransactions(true);
+    setError(null);
+    try {
+      // Fetch transactions for both segwit and legacy accounts
+      const [segwitTxs, legacyTxs] = await Promise.all([
+        fetchTransactions(accountZpub, 'btc', 20, 1),
+        fetchTransactions(accountXpub, 'btc', 20, 1),
+      ]);
+
+      // Combine and deduplicate transactions by txid
+      const allTxs = [
+        ...(segwitTxs.transactions ?? []),
+        ...(legacyTxs.transactions ?? []),
+      ];
+
+      const uniqueTxs = Array.from(
+        new Map(allTxs.map(tx => [tx.txid, tx])).values()
+      );
+
+      // Sort by block time (newest first)
+      uniqueTxs.sort((a, b) => (b.blockTime ?? 0) - (a.blockTime ?? 0));
+
+      setTransactions(uniqueTxs);
+
+      // Auto-expand address pool based on transaction history
+      if (mnemonic && uniqueTxs.length > 0) {
+        const discovered = deriveWalletWithDiscovery(mnemonic, uniqueTxs, 20, 5);
+        setSegwitAddresses(discovered.segwitAddresses);
+        setLegacyAddresses(discovered.legacyAddresses);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch transactions');
+    } finally {
+      setLoadingTransactions(false);
+    }
+  };
+
+  const handleTransactionClick = (transaction: BlockbookTransaction) => {
+    setSelectedTransaction(transaction);
+    onTxModalOpen();
   };
 
   const onMnemonicChange = (value: string) => {
@@ -303,6 +353,25 @@ function App() {
                   <UtxoList utxos={utxos} pathLookup={addressMap} />
                 </Stack>
               </Box>
+
+              <Box p={6} rounded="lg" bg={panelBg} shadow="md">
+                <Stack spacing={4}>
+                  <Heading size="md">Transaction History</Heading>
+                  <Text color="gray.500">
+                    View transaction history for both segwit and legacy accounts. Click on a transaction to see detailed information.
+                  </Text>
+                  <Button colorScheme="purple" onClick={handleFetchTransactions} isLoading={loadingTransactions} alignSelf="flex-start">
+                    Fetch Transactions
+                  </Button>
+                  {error && (
+                    <Alert status="error" borderRadius="md">
+                      <AlertIcon />
+                      <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                  )}
+                  <TransactionList transactions={transactions} onTransactionClick={handleTransactionClick} addressMap={addressMap} />
+                </Stack>
+              </Box>
             </Stack>
           </TabPanel>
 
@@ -313,6 +382,12 @@ function App() {
       </Tabs>
 
       <AddressModal isOpen={isOpen} onClose={onClose} mnemonic={mnemonic} />
+      <TransactionDetailsModal
+        isOpen={isTxModalOpen}
+        onClose={onTxModalClose}
+        transaction={selectedTransaction}
+        addressMap={addressMap}
+      />
     </Container>
   );
 }
