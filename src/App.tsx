@@ -43,6 +43,8 @@ import TransactionList from './TransactionList';
 import TransactionDetailsModal from './TransactionDetailsModal';
 import AddressMapModal from './AddressMapModal';
 import { deriveWalletWithDiscovery } from './addressDiscovery';
+import { useNetwork } from './NetworkContext';
+import NetworkSwitcher from './NetworkSwitcher';
 
 function ColorModeToggle() {
   const { colorMode, toggleColorMode } = useColorMode();
@@ -55,10 +57,10 @@ function ColorModeToggle() {
   );
 }
 
-const formatBtc = (value: string | number) => {
+const formatCrypto = (value: string | number, ticker: string) => {
   const sats = typeof value === 'string' ? BigInt(value) : BigInt(value);
   const btc = Number(sats) / 1e8;
-  return `${btc.toFixed(8)} BTC (${sats.toString()} sats)`;
+  return `${btc.toFixed(8)} ${ticker} (${sats.toString()} sats)`;
 };
 
 function CompactAddressPreview({ addresses }: { addresses: DerivedAddress[] }) {
@@ -96,7 +98,7 @@ function CompactAddressPreview({ addresses }: { addresses: DerivedAddress[] }) {
   );
 }
 
-function UtxoList({ utxos, pathLookup }: { utxos: BlockbookUtxo[]; pathLookup: Map<string, DerivedAddress> }) {
+function UtxoList({ utxos, pathLookup, ticker }: { utxos: BlockbookUtxo[]; pathLookup: Map<string, DerivedAddress>; ticker: string }) {
   if (!utxos.length) {
     return <Text color="gray.500">No UTXOs loaded yet.</Text>;
   }
@@ -118,7 +120,7 @@ function UtxoList({ utxos, pathLookup }: { utxos: BlockbookUtxo[]; pathLookup: M
                 <Text as="span" fontWeight="bold">
                   Amount
                 </Text>{' '}
-                {formatBtc(utxo.value)}
+                {formatCrypto(utxo.value, ticker)}
               </Text>
               <Grid templateColumns={{ base: '1fr', md: 'repeat(2, minmax(0, 1fr))' }} gap={3}>
                 <GridItem>
@@ -159,6 +161,7 @@ function UtxoList({ utxos, pathLookup }: { utxos: BlockbookUtxo[]; pathLookup: M
 }
 
 function App() {
+  const { network, networkInfo } = useNetwork();
   const panelBg = useColorModeValue('gray.50', 'gray.800');
   const accent = useColorModeValue('purple.600', 'purple.300');
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -188,7 +191,7 @@ function App() {
   const refreshMnemonic = (value?: string) => {
     try {
       const nextMnemonic = value ?? createRandomMnemonic();
-      const derived = deriveWalletFromMnemonic(nextMnemonic, 6);
+      const derived = deriveWalletFromMnemonic(nextMnemonic, 6, network);
       setMnemonic(nextMnemonic);
       setAccountZpub(derived.segwitAccount.zpub);
       setAccountXpub(derived.legacyAccount.xpub);
@@ -200,20 +203,29 @@ function App() {
     }
   };
 
+  // Re-derive wallet when network changes
   useEffect(() => {
-    refreshMnemonic();
-  }, []);
+    if (mnemonic) {
+      refreshMnemonic(mnemonic);
+    } else {
+      refreshMnemonic();
+    }
+    // Clear UTXOs and transactions when network changes
+    setUtxos([]);
+    setTransactions([]);
+  }, [network]);
 
   const handleFetchUtxos = async () => {
     setLoadingUtxo(true);
     setError(null);
     try {
-      // Fetch UTXOs for both segwit and legacy accounts
-      const [segwitResults, legacyResults] = await Promise.all([
-        fetchUtxos(accountZpub, 'btc'),
-        fetchUtxos(accountXpub, 'btc'),
-      ]);
-      setUtxos([...segwitResults, ...legacyResults]);
+      // Fetch UTXOs for both segwit and legacy accounts (or just legacy for non-segwit networks)
+      const promises = [fetchUtxos(accountXpub, network)];
+      if (networkInfo.supportsSegwit && accountZpub) {
+        promises.push(fetchUtxos(accountZpub, network));
+      }
+      const results = await Promise.all(promises);
+      setUtxos(results.flat());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch UTXOs');
     } finally {
@@ -226,21 +238,25 @@ function App() {
     setError(null);
     setTxProgress(null);
     try {
-      // Fetch ALL transactions for both segwit and legacy accounts with pagination
-      const [segwitTxs, legacyTxs] = await Promise.all([
-        fetchAllTransactions(accountZpub, 'btc', TX_PAGE_SIZE, (current, total) => {
+      // Fetch ALL transactions for both segwit and legacy accounts (or just legacy for non-segwit networks)
+      const promises = [
+        fetchAllTransactions(accountXpub, network, TX_PAGE_SIZE, (current, total) => {
           setTxProgress({ current, total });
-        }),
-        fetchAllTransactions(accountXpub, 'btc', TX_PAGE_SIZE, (current, total) => {
-          setTxProgress({ current, total });
-        }),
-      ]);
+        })
+      ];
+
+      if (networkInfo.supportsSegwit && accountZpub) {
+        promises.push(
+          fetchAllTransactions(accountZpub, network, TX_PAGE_SIZE, (current, total) => {
+            setTxProgress({ current, total });
+          })
+        );
+      }
+
+      const results = await Promise.all(promises);
 
       // Combine and deduplicate transactions by txid
-      const allTxs = [
-        ...(segwitTxs.transactions ?? []),
-        ...(legacyTxs.transactions ?? []),
-      ];
+      const allTxs = results.flatMap(result => result.transactions ?? []);
 
       const uniqueTxs = Array.from(
         new Map(allTxs.map(tx => [tx.txid, tx])).values()
@@ -254,7 +270,7 @@ function App() {
       // Auto-expand address pool based on transaction history
       // Using BIP44 standard gap limit (20 addresses)
       if (mnemonic && uniqueTxs.length > 0) {
-        const discovered = deriveWalletWithDiscovery(mnemonic, uniqueTxs, GAP_LIMIT, 5);
+        const discovered = deriveWalletWithDiscovery(mnemonic, uniqueTxs, GAP_LIMIT, 5, network);
         setSegwitAddresses(discovered.segwitAddresses);
         setLegacyAddresses(discovered.legacyAddresses);
       }
@@ -287,7 +303,10 @@ function App() {
           <Icon as={FaWallet} boxSize={8} color={accent} />
           <Heading size="lg">Broken Wallet</Heading>
         </HStack>
-        <ColorModeToggle />
+        <HStack spacing={3}>
+          <NetworkSwitcher />
+          <ColorModeToggle />
+        </HStack>
       </Flex>
 
       <Tabs variant="enclosed" colorScheme="purple">
@@ -303,7 +322,9 @@ function App() {
                 <Stack spacing={4}>
                   <Heading size="md">Wallet seed</Heading>
                   <Text color="gray.500">
-                    We derive both BIP84 (native segwit, p2wpkh) and BIP44 (legacy, p2pkh) accounts from the same seed.
+                    {networkInfo.supportsSegwit
+                      ? 'We derive both BIP84 (native segwit, p2wpkh) and BIP44 (legacy, p2pkh) accounts from the same seed.'
+                      : 'We derive BIP44 (legacy, p2pkh) account from the seed.'}
                   </Text>
                   <Textarea value={mnemonic} onChange={(e) => onMnemonicChange(e.target.value)} rows={3} />
                   <HStack>
@@ -316,10 +337,14 @@ function App() {
                 <Stack spacing={4}>
                   <Heading size="md">Account Keys</Heading>
                   <Grid templateColumns="auto 1fr" gap={3} alignItems="center">
-                    <Text fontSize="sm" fontWeight="semibold">Segwit (BIP84):</Text>
-                    <Code fontFamily="mono" fontSize="xs" p={2} isTruncated>
-                      {accountZpub}
-                    </Code>
+                    {networkInfo.supportsSegwit && accountZpub && (
+                      <>
+                        <Text fontSize="sm" fontWeight="semibold">Segwit (BIP84):</Text>
+                        <Code fontFamily="mono" fontSize="xs" p={2} isTruncated>
+                          {accountZpub}
+                        </Code>
+                      </>
+                    )}
 
                     <Text fontSize="sm" fontWeight="semibold">Legacy (BIP44):</Text>
                     <Code fontFamily="mono" fontSize="xs" p={2} isTruncated>
@@ -327,7 +352,9 @@ function App() {
                     </Code>
                   </Grid>
                   <Text fontSize="xs" color="gray.500">
-                    zpub for P2WPKH (bc1...) • xpub for P2PKH (1...)
+                    {networkInfo.supportsSegwit
+                      ? `zpub for P2WPKH (${networkInfo.bech32Prefix}1...) • xpub for P2PKH`
+                      : 'xpub for P2PKH'}
                   </Text>
                 </Stack>
               </Box>
@@ -341,7 +368,9 @@ function App() {
                     </Button>
                   </HStack>
                   <Text fontSize="sm" color="gray.500">
-                    One address from each chain (Segwit/Legacy × Receive/Change)
+                    {networkInfo.supportsSegwit
+                      ? 'One address from each chain (Segwit/Legacy × Receive/Change)'
+                      : 'Legacy addresses (Receive/Change)'}
                   </Text>
                   <CompactAddressPreview addresses={allAddresses} />
                 </Stack>
@@ -351,10 +380,12 @@ function App() {
                 <Stack spacing={4}>
                   <Heading size="md">UTXO lookup (via Backend)</Heading>
                   <Text color="gray.500">
-                    Query UTXOs for both segwit (zpub) and legacy (xpub) accounts. API calls are proxied through our backend server.
+                    {networkInfo.supportsSegwit
+                      ? 'Query UTXOs for both segwit (zpub) and legacy (xpub) accounts. API calls are proxied through our backend server.'
+                      : 'Query UTXOs for legacy (xpub) account. API calls are proxied through our backend server.'}
                   </Text>
                   <Button colorScheme="purple" onClick={handleFetchUtxos} isLoading={loadingUtxo} alignSelf="flex-start">
-                    Fetch UTXOs for both accounts
+                    {networkInfo.supportsSegwit ? 'Fetch UTXOs for both accounts' : 'Fetch UTXOs'}
                   </Button>
                   {error && (
                     <Alert status="error" borderRadius="md">
@@ -362,7 +393,7 @@ function App() {
                       <AlertDescription>{error}</AlertDescription>
                     </Alert>
                   )}
-                  <UtxoList utxos={utxos} pathLookup={addressMap} />
+                  <UtxoList utxos={utxos} pathLookup={addressMap} ticker={networkInfo.ticker} />
                 </Stack>
               </Box>
 
@@ -382,7 +413,9 @@ function App() {
                     </Button>
                   </HStack>
                   <Text color="gray.500">
-                    View transaction history for both segwit and legacy accounts. All transaction pages will be fetched automatically with BIP44 standard gap limit (20 addresses). Click on a transaction to see detailed information.
+                    {networkInfo.supportsSegwit
+                      ? 'View transaction history for both segwit and legacy accounts. All transaction pages will be fetched automatically with BIP44 standard gap limit (20 addresses). Click on a transaction to see detailed information.'
+                      : 'View transaction history for legacy account. All transaction pages will be fetched automatically with BIP44 standard gap limit (20 addresses). Click on a transaction to see detailed information.'}
                   </Text>
                   <Button colorScheme="purple" onClick={handleFetchTransactions} isLoading={loadingTransactions} alignSelf="flex-start">
                     Fetch All Transactions

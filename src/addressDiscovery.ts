@@ -93,7 +93,8 @@ export function deriveWalletWithDiscovery(
   mnemonic: string,
   transactions: BlockbookTransaction[],
   gapLimit: number = 20,
-  minAddresses: number = 5
+  minAddresses: number = 5,
+  networkSymbol: string = 'btc'
 ): {
   segwitAddresses: DerivedAddress[];
   legacyAddresses: DerivedAddress[];
@@ -109,7 +110,7 @@ export function deriveWalletWithDiscovery(
     const wallet = deriveWalletFromMnemonic(mnemonic, {
       receiveCount: currentCount,
       changeCount: currentCount,
-    });
+    }, networkSymbol);
 
     const allAddresses = [
       ...wallet.segwitAccount.addresses,
@@ -141,12 +142,12 @@ export function deriveWalletWithDiscovery(
       const segwitWallet = deriveWalletFromMnemonic(mnemonic, {
         receiveCount: Math.max(minAddresses, requiredCounts.segwitReceive),
         changeCount: Math.max(minAddresses, requiredCounts.segwitChange),
-      });
+      }, networkSymbol);
 
       const legacyWallet = deriveWalletFromMnemonic(mnemonic, {
         receiveCount: Math.max(minAddresses, requiredCounts.legacyReceive),
         changeCount: Math.max(minAddresses, requiredCounts.legacyChange),
-      });
+      }, networkSymbol);
 
       return {
         segwitAddresses: segwitWallet.segwitAccount.addresses,
@@ -162,12 +163,12 @@ export function deriveWalletWithDiscovery(
   const segwitWallet = deriveWalletFromMnemonic(mnemonic, {
     receiveCount: currentCount,
     changeCount: currentCount,
-  });
+  }, networkSymbol);
 
   const legacyWallet = deriveWalletFromMnemonic(mnemonic, {
     receiveCount: currentCount,
     changeCount: currentCount,
-  });
+  }, networkSymbol);
 
   return {
     segwitAddresses: segwitWallet.segwitAccount.addresses,

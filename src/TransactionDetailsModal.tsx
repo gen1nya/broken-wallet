@@ -23,6 +23,7 @@ import { FaArrowDown, FaArrowRight, FaWallet } from 'react-icons/fa';
 import { BlockbookTransaction } from './blockbookClient';
 import { DerivedAddress } from './bitcoin';
 import { isOwnAddress } from './addressDiscovery';
+import { useNetwork } from './NetworkContext';
 
 interface TransactionDetailsModalProps {
   isOpen: boolean;
@@ -31,7 +32,7 @@ interface TransactionDetailsModalProps {
   addressMap: Map<string, DerivedAddress>;
 }
 
-const formatBtc = (value: string | number) => {
+const formatCrypto = (value: string | number) => {
   const sats = typeof value === 'string' ? BigInt(value) : BigInt(value);
   const btc = Number(sats) / 1e8;
   return btc.toFixed(8);
@@ -54,6 +55,7 @@ export default function TransactionDetailsModal({
   transaction,
   addressMap,
 }: TransactionDetailsModalProps) {
+  const { networkInfo } = useNetwork();
   const panelBg = useColorModeValue('gray.50', 'gray.700');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
   const walletBg = useColorModeValue('purple.50', 'purple.900');
@@ -62,9 +64,9 @@ export default function TransactionDetailsModal({
   if (!transaction) return null;
 
   const isConfirmed = (transaction.confirmations ?? 0) > 0;
-  const totalInputValue = formatBtc(transaction.valueIn);
-  const totalOutputValue = formatBtc(transaction.value);
-  const fee = formatBtc(transaction.fees);
+  const totalInputValue = formatCrypto(transaction.valueIn);
+  const totalOutputValue = formatCrypto(transaction.value);
+  const fee = formatCrypto(transaction.fees);
   const feeSats = formatSats(transaction.fees);
 
   return (
@@ -132,7 +134,7 @@ export default function TransactionDetailsModal({
                   </Text>
                   <VStack align="start" spacing={0}>
                     <Text fontSize="lg" fontWeight="bold">
-                      {totalInputValue} BTC
+                      {totalInputValue} {networkInfo.ticker}
                     </Text>
                     <Text fontSize="xs" color="gray.500">
                       {formatSats(transaction.valueIn)} sats
@@ -146,7 +148,7 @@ export default function TransactionDetailsModal({
                   </Text>
                   <VStack align="start" spacing={0}>
                     <Text fontSize="lg" fontWeight="bold">
-                      {totalOutputValue} BTC
+                      {totalOutputValue} {networkInfo.ticker}
                     </Text>
                     <Text fontSize="xs" color="gray.500">
                       {formatSats(transaction.value)} sats
@@ -160,7 +162,7 @@ export default function TransactionDetailsModal({
                   </Text>
                   <VStack align="start" spacing={0}>
                     <Text fontSize="lg" fontWeight="bold" color="orange.500">
-                      {fee} BTC
+                      {fee} {networkInfo.ticker}
                     </Text>
                     <Text fontSize="xs" color="gray.500">
                       {feeSats} sats
@@ -203,7 +205,7 @@ export default function TransactionDetailsModal({
                               )}
                             </HStack>
                             <Text fontWeight="bold" color="green.500">
-                              {formatBtc(input.value)} BTC
+                              {formatCrypto(input.value)} {networkInfo.ticker}
                             </Text>
                           </HStack>
 
@@ -291,7 +293,7 @@ export default function TransactionDetailsModal({
                               )}
                             </HStack>
                             <Text fontWeight="bold" color="orange.500">
-                              {formatBtc(output.value)} BTC
+                              {formatCrypto(output.value)} {networkInfo.ticker}
                             </Text>
                           </HStack>
 

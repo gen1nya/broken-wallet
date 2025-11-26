@@ -29,22 +29,52 @@ export interface WalletDerivation {
   };
 }
 
-const NETWORK_PREFIX = 'bc';
-const NETWORK_VERSION_P2PKH = 0x00;
-const SEGWIT_ACCOUNT_PATH = "m/84'/0'/0'";
-const LEGACY_ACCOUNT_PATH = "m/44'/0'/0'";
-const ZPUB_PREFIX = new Uint8Array([0x04, 0xb2, 0x47, 0x46]);
-const XPUB_PREFIX = new Uint8Array([0x04, 0x88, 0xb2, 0x1e]);
+export interface NetworkConfig {
+  bech32Prefix?: string;
+  p2pkhVersion: number;
+  coinType: number;
+  zpubPrefix?: Uint8Array;
+  xpubPrefix: Uint8Array;
+}
+
+// Network configurations
+export const NETWORKS: Record<string, NetworkConfig> = {
+  btc: {
+    bech32Prefix: 'bc',
+    p2pkhVersion: 0x00,
+    coinType: 0,
+    zpubPrefix: new Uint8Array([0x04, 0xb2, 0x47, 0x46]),
+    xpubPrefix: new Uint8Array([0x04, 0x88, 0xb2, 0x1e]),
+  },
+  ltc: {
+    bech32Prefix: 'ltc',
+    p2pkhVersion: 0x30,
+    coinType: 2,
+    zpubPrefix: new Uint8Array([0x04, 0xb2, 0x47, 0x46]), // Same as BTC for segwit
+    xpubPrefix: new Uint8Array([0x04, 0x88, 0xb2, 0x1e]), // Same as BTC for legacy
+  },
+  doge: {
+    p2pkhVersion: 0x1e,
+    coinType: 3,
+    xpubPrefix: new Uint8Array([0x04, 0x88, 0xb2, 0x1e]),
+  },
+  dash: {
+    p2pkhVersion: 0x4c,
+    coinType: 5,
+    xpubPrefix: new Uint8Array([0x04, 0x88, 0xb2, 0x1e]),
+  },
+};
+
 const base58checkCodec = base58check(sha256);
 
 function hash160(publicKey: Uint8Array): Uint8Array {
   return ripemd160(sha256(publicKey));
 }
 
-function toBech32Address(hash: Uint8Array): string {
+function toBech32Address(hash: Uint8Array, prefix: string): string {
   const words = bech32.toWords(hash);
   words.unshift(0); // witness version 0
-  return bech32.encode(NETWORK_PREFIX, words);
+  return bech32.encode(prefix, words);
 }
 
 function toBase58Address(hash: Uint8Array, version: number): string {
@@ -54,18 +84,29 @@ function toBase58Address(hash: Uint8Array, version: number): string {
   return base58checkCodec.encode(payload);
 }
 
-function deriveSegwitAddress(account: HDKey, chain: number, index: number, type: AddressType): DerivedAddress {
+function deriveSegwitAddress(
+  account: HDKey,
+  chain: number,
+  index: number,
+  type: AddressType,
+  network: NetworkConfig,
+  accountPath: string
+): DerivedAddress {
   const node = account.deriveChild(chain).deriveChild(index);
   if (!node.publicKey) {
     throw new Error('Unable to derive public key');
   }
 
+  if (!network.bech32Prefix) {
+    throw new Error('Network does not support segwit');
+  }
+
   const hash = hash160(node.publicKey);
-  const address = toBech32Address(hash);
+  const address = toBech32Address(hash, network.bech32Prefix);
 
   return {
     address,
-    path: `${SEGWIT_ACCOUNT_PATH}/${chain}/${index}`,
+    path: `${accountPath}/${chain}/${index}`,
     publicKey: Array.from(node.publicKey)
       .map((byte) => byte.toString(16).padStart(2, '0'))
       .join(''),
@@ -75,18 +116,25 @@ function deriveSegwitAddress(account: HDKey, chain: number, index: number, type:
   };
 }
 
-function deriveLegacyAddress(account: HDKey, chain: number, index: number, type: AddressType): DerivedAddress {
+function deriveLegacyAddress(
+  account: HDKey,
+  chain: number,
+  index: number,
+  type: AddressType,
+  network: NetworkConfig,
+  accountPath: string
+): DerivedAddress {
   const node = account.deriveChild(chain).deriveChild(index);
   if (!node.publicKey) {
     throw new Error('Unable to derive public key');
   }
 
   const hash = hash160(node.publicKey);
-  const address = toBase58Address(hash, NETWORK_VERSION_P2PKH);
+  const address = toBase58Address(hash, network.p2pkhVersion);
 
   return {
     address,
-    path: `${LEGACY_ACCOUNT_PATH}/${chain}/${index}`,
+    path: `${accountPath}/${chain}/${index}`,
     publicKey: Array.from(node.publicKey)
       .map((byte) => byte.toString(16).padStart(2, '0'))
       .join(''),
@@ -103,10 +151,16 @@ export interface AddressGenerationOptions {
 
 export function deriveWalletFromMnemonic(
   mnemonic: string,
-  options: number | AddressGenerationOptions = 5
+  options: number | AddressGenerationOptions = 5,
+  networkSymbol: string = 'btc'
 ): WalletDerivation {
   if (!validateMnemonic(mnemonic, wordlist)) {
     throw new Error('Invalid mnemonic');
+  }
+
+  const network = NETWORKS[networkSymbol];
+  if (!network) {
+    throw new Error(`Unsupported network: ${networkSymbol}`);
   }
 
   // Backwards compatibility: if options is a number, use old behavior
@@ -124,40 +178,51 @@ export function deriveWalletFromMnemonic(
   const seed = mnemonicToSeedSync(mnemonic);
   const master = HDKey.fromMasterSeed(seed);
 
-  // Derive segwit account (BIP84)
-  const segwitAccount = master.derive(SEGWIT_ACCOUNT_PATH);
-  if (!segwitAccount.publicExtendedKey) {
-    throw new Error('Unable to derive segwit account xpub');
+  const segwitAccountPath = `m/84'/${network.coinType}'/0'`;
+  const legacyAccountPath = `m/44'/${network.coinType}'/0'`;
+
+  // Derive segwit account (BIP84) - only if network supports it
+  let segwitAccount: { zpub: string; addresses: DerivedAddress[] } | undefined;
+  if (network.bech32Prefix && network.zpubPrefix) {
+    const segwitHDKey = master.derive(segwitAccountPath);
+    if (!segwitHDKey.publicExtendedKey) {
+      throw new Error('Unable to derive segwit account xpub');
+    }
+
+    const segwitReceive: DerivedAddress[] = Array.from({ length: receiveCount }, (_, index) =>
+      deriveSegwitAddress(segwitHDKey, 0, index, 'receive', network, segwitAccountPath),
+    );
+    const segwitChange: DerivedAddress[] = Array.from({ length: changeCount }, (_, index) =>
+      deriveSegwitAddress(segwitHDKey, 1, index, 'change', network, segwitAccountPath),
+    );
+
+    segwitAccount = {
+      zpub: convertToZpub(segwitHDKey.publicExtendedKey, network.zpubPrefix),
+      addresses: [...segwitReceive, ...segwitChange],
+    };
   }
 
-  const segwitReceive: DerivedAddress[] = Array.from({ length: receiveCount }, (_, index) =>
-    deriveSegwitAddress(segwitAccount, 0, index, 'receive'),
-  );
-  const segwitChange: DerivedAddress[] = Array.from({ length: changeCount }, (_, index) =>
-    deriveSegwitAddress(segwitAccount, 1, index, 'change'),
-  );
-
   // Derive legacy account (BIP44)
-  const legacyAccount = master.derive(LEGACY_ACCOUNT_PATH);
-  if (!legacyAccount.publicExtendedKey) {
+  const legacyHDKey = master.derive(legacyAccountPath);
+  if (!legacyHDKey.publicExtendedKey) {
     throw new Error('Unable to derive legacy account xpub');
   }
 
   const legacyReceive: DerivedAddress[] = Array.from({ length: receiveCount }, (_, index) =>
-    deriveLegacyAddress(legacyAccount, 0, index, 'receive'),
+    deriveLegacyAddress(legacyHDKey, 0, index, 'receive', network, legacyAccountPath),
   );
   const legacyChange: DerivedAddress[] = Array.from({ length: changeCount }, (_, index) =>
-    deriveLegacyAddress(legacyAccount, 1, index, 'change'),
+    deriveLegacyAddress(legacyHDKey, 1, index, 'change', network, legacyAccountPath),
   );
 
   return {
     mnemonic,
-    segwitAccount: {
-      zpub: convertToZpub(segwitAccount.publicExtendedKey),
-      addresses: [...segwitReceive, ...segwitChange],
+    segwitAccount: segwitAccount ?? {
+      zpub: '',
+      addresses: [],
     },
     legacyAccount: {
-      xpub: legacyAccount.publicExtendedKey,
+      xpub: legacyHDKey.publicExtendedKey,
       addresses: [...legacyReceive, ...legacyChange],
     },
   };
@@ -167,10 +232,10 @@ export function createRandomMnemonic(): string {
   return generateMnemonic(wordlist, 128);
 }
 
-function convertToZpub(xpub: string): string {
+function convertToZpub(xpub: string, zpubPrefix: Uint8Array): string {
   const decoded = base58checkCodec.decode(xpub);
   const zpubBytes = new Uint8Array(decoded.length);
-  zpubBytes.set(ZPUB_PREFIX, 0);
-  zpubBytes.set(decoded.slice(ZPUB_PREFIX.length), ZPUB_PREFIX.length);
+  zpubBytes.set(zpubPrefix, 0);
+  zpubBytes.set(decoded.slice(zpubPrefix.length), zpubPrefix.length);
   return base58checkCodec.encode(zpubBytes);
 }

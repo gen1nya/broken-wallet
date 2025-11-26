@@ -29,6 +29,7 @@ import {
 import { useState, useEffect } from 'react';
 import { FaChevronLeft, FaChevronRight } from 'react-icons/fa';
 import { DerivedAddress, deriveWalletFromMnemonic } from './bitcoin';
+import { useNetwork } from './NetworkContext';
 
 interface AddressModalProps {
   isOpen: boolean;
@@ -42,6 +43,7 @@ type AddressChain = 'receive' | 'change';
 const PAGE_SIZE = 100;
 
 export default function AddressModal({ isOpen, onClose, mnemonic }: AddressModalProps) {
+  const { network, networkInfo } = useNetwork();
   const [format, setFormat] = useState<AddressFormat>('segwit');
   const [chain, setChain] = useState<AddressChain>('receive');
   const [count, setCount] = useState(10);
@@ -50,16 +52,23 @@ export default function AddressModal({ isOpen, onClose, mnemonic }: AddressModal
 
   const badgeColor = useColorModeValue('purple.600', 'purple.300');
 
-  // Reset state when modal closes
+  // Reset state when modal closes or network changes
   useEffect(() => {
     if (!isOpen) {
-      setFormat('segwit');
+      setFormat(networkInfo.supportsSegwit ? 'segwit' : 'legacy');
       setChain('receive');
       setCount(10);
       setAddresses([]);
       setCurrentPage(0);
     }
-  }, [isOpen]);
+  }, [isOpen, networkInfo.supportsSegwit]);
+
+  // Switch to legacy if network doesn't support segwit
+  useEffect(() => {
+    if (!networkInfo.supportsSegwit && format === 'segwit') {
+      setFormat('legacy');
+    }
+  }, [networkInfo.supportsSegwit, format]);
 
   const handleGenerate = () => {
     // Use new API to generate exact count for selected chain
@@ -67,7 +76,7 @@ export default function AddressModal({ isOpen, onClose, mnemonic }: AddressModal
       ? { receiveCount: count, changeCount: 0 }
       : { receiveCount: 0, changeCount: count };
 
-    const wallet = deriveWalletFromMnemonic(mnemonic, options);
+    const wallet = deriveWalletFromMnemonic(mnemonic, options, network);
 
     const sourceAddresses = format === 'segwit'
       ? wallet.segwitAccount.addresses
@@ -101,7 +110,7 @@ export default function AddressModal({ isOpen, onClose, mnemonic }: AddressModal
                 <Box>
                   <Text fontSize="sm" mb={1}>Format</Text>
                   <Select value={format} onChange={(e) => setFormat(e.target.value as AddressFormat)} width="200px">
-                    <option value="segwit">Segwit (P2WPKH)</option>
+                    <option value="segwit" disabled={!networkInfo.supportsSegwit}>Segwit (P2WPKH)</option>
                     <option value="legacy">Legacy (P2PKH)</option>
                   </Select>
                 </Box>

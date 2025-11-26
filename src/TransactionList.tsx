@@ -14,6 +14,7 @@ import { FaArrowDown, FaArrowUp, FaExchangeAlt } from 'react-icons/fa';
 import { BlockbookTransaction } from './blockbookClient';
 import { DerivedAddress } from './bitcoin';
 import { isOwnAddress } from './addressDiscovery';
+import { useNetwork } from './NetworkContext';
 
 interface TransactionListProps {
   transactions: BlockbookTransaction[];
@@ -21,10 +22,10 @@ interface TransactionListProps {
   addressMap: Map<string, DerivedAddress>;
 }
 
-const formatBtc = (value: string | number) => {
+const formatCrypto = (value: string | number, ticker: string) => {
   const sats = typeof value === 'string' ? BigInt(value) : BigInt(value);
   const btc = Number(sats) / 1e8;
-  return `${btc.toFixed(8)} BTC`;
+  return `${btc.toFixed(8)} ${ticker}`;
 };
 
 const formatDate = (timestamp?: number) => {
@@ -34,6 +35,7 @@ const formatDate = (timestamp?: number) => {
 };
 
 export default function TransactionList({ transactions, onTransactionClick, addressMap }: TransactionListProps) {
+  const { networkInfo } = useNetwork();
   const borderColor = useColorModeValue('gray.200', 'gray.600');
   const hoverBg = useColorModeValue('gray.50', 'gray.700');
 
@@ -45,7 +47,7 @@ export default function TransactionList({ transactions, onTransactionClick, addr
     <Stack spacing={3}>
       {transactions.map((tx) => {
         const isConfirmed = (tx.confirmations ?? 0) > 0;
-        const fee = formatBtc(tx.fees);
+        const fee = formatCrypto(tx.fees, networkInfo.ticker);
 
         // Check wallet involvement using combined approach (isOwn + addressMap)
         const walletInputs = tx.vin.filter(input => {
@@ -161,7 +163,7 @@ export default function TransactionList({ transactions, onTransactionClick, addr
                       'inherit'
                     }
                   >
-                    {walletImpact > 0n ? '+' : walletImpact < 0n ? '-' : ''}{formatBtc(walletImpact < 0n ? -walletImpact : walletImpact)}
+                    {walletImpact > 0n ? '+' : walletImpact < 0n ? '-' : ''}{formatCrypto(walletImpact < 0n ? -walletImpact : walletImpact, networkInfo.ticker)}
                   </Text>
                 </Box>
                 <Box>

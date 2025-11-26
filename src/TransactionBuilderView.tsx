@@ -31,6 +31,7 @@ import { FaLink, FaPaperPlane } from 'react-icons/fa';
 import { BlockbookUtxo, broadcastTransaction } from './blockbookClient';
 import { DerivedAddress } from './bitcoin';
 import { buildSignedTransaction, detectAddressType, TxBuildResult, TxOutputRequest } from './transactionBuilder';
+import { useNetwork } from './NetworkContext';
 
 interface OutputRow {
   id: string;
@@ -44,12 +45,13 @@ interface Props {
   addresses: DerivedAddress[];
 }
 
-const formatBtc = (value: bigint) => {
+const formatCrypto = (value: bigint, ticker: string) => {
   const btc = Number(value) / 1e8;
-  return `${btc.toFixed(8)} BTC (${value.toString()} sats)`;
+  return `${btc.toFixed(8)} ${ticker} (${value.toString()} sats)`;
 };
 
 export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
+  const { network, networkInfo } = useNetwork();
   const panelBg = useColorModeValue('gray.50', 'gray.800');
   const accent = useColorModeValue('purple.600', 'purple.300');
 
@@ -155,7 +157,7 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
     setError(null);
     setBroadcastedTxId(null);
     try {
-      const txid = await broadcastTransaction(rawTx, 'btc');
+      const txid = await broadcastTransaction(rawTx, network);
       setBroadcastedTxId(txid);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Broadcast failed');
@@ -199,7 +201,7 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
                         aria-label={`Select ${key}`}
                       />
                     </Td>
-                    <Td>{formatBtc(BigInt(utxo.value))}</Td>
+                    <Td>{formatCrypto(BigInt(utxo.value), networkInfo.ticker)}</Td>
                     <Td fontFamily="mono" fontSize="xs" wordBreak="break-all">
                       {utxo.address ?? 'unknown'}
                     </Td>
@@ -212,7 +214,7 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
               })}
             </Tbody>
           </Table>
-          <Text fontWeight="semibold">Selected value: {formatBtc(totalSelected)}</Text>
+          <Text fontWeight="semibold">Selected value: {formatCrypto(totalSelected, networkInfo.ticker)}</Text>
         </Stack>
       </Box>
 
@@ -233,7 +235,7 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
                   onChange={(e) => updateOutputRow(row.id, 'address', e.target.value)}
                 />
                 <Input
-                  placeholder="Amount (BTC)"
+                  placeholder={`Amount (${networkInfo.ticker})`}
                   value={row.amount}
                   onChange={(e) => updateOutputRow(row.id, 'amount', e.target.value)}
                 />
@@ -312,7 +314,7 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
             <Stack spacing={3}>
               <Flex gap={3} wrap="wrap">
                 <Badge colorScheme="purple">vsize: {buildResult.vsize} vbytes</Badge>
-                <Badge colorScheme="purple">fee: {formatBtc(buildResult.feeSats)}</Badge>
+                <Badge colorScheme="purple">fee: {formatCrypto(buildResult.feeSats, networkInfo.ticker)}</Badge>
                 <Badge colorScheme="purple">effective fee rate: {buildResult.effectiveFeeRate.toFixed(2)} sat/vB</Badge>
                 <Badge colorScheme="purple">inputs: {buildResult.totalInput.toString()} sats</Badge>
               </Flex>
@@ -327,7 +329,7 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
                     <HStack key={`${utxo.txid}:${utxo.vout}`}>
                       <Icon as={FaLink} color={accent} />
                       <Text fontFamily="mono" fontSize="sm">
-                        Input {utxo.txid.slice(0, 6)}...:{utxo.vout} → {formatBtc(BigInt(utxo.value))}
+                        Input {utxo.txid.slice(0, 6)}...:{utxo.vout} → {formatCrypto(BigInt(utxo.value), networkInfo.ticker)}
                       </Text>
                     </HStack>
                   ))}
@@ -336,7 +338,7 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
                     <HStack key={`${output.address}-${index}`}>
                       <Icon as={FaLink} color={accent} />
                       <Text fontFamily="mono" fontSize="sm">
-                        Output {index + 1}: {output.address} ({formatBtc(output.amountSats)})
+                        Output {index + 1}: {output.address} ({formatCrypto(output.amountSats, networkInfo.ticker)})
                       </Text>
                     </HStack>
                   ))}
