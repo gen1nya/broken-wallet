@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import { getNetwork } from '../config/networks.js';
-import { BlockbookUtxo, BroadcastResponse, NetworkSymbol } from '../types/index.js';
+import { BlockbookUtxo, BroadcastResponse, NetworkSymbol } from '../types';
 
 /**
  * Service for interacting with NowNodes Blockbook API

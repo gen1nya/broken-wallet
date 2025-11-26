@@ -161,20 +161,25 @@ function App() {
 
   const [mnemonic, setMnemonic] = useState('');
   const [accountZpub, setAccountZpub] = useState('');
-  const [addresses, setAddresses] = useState<DerivedAddress[]>([]);
+  const [accountXpub, setAccountXpub] = useState('');
+  const [segwitAddresses, setSegwitAddresses] = useState<DerivedAddress[]>([]);
+  const [legacyAddresses, setLegacyAddresses] = useState<DerivedAddress[]>([]);
   const [utxos, setUtxos] = useState<BlockbookUtxo[]>([]);
   const [loadingUtxo, setLoadingUtxo] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const addressMap = useMemo(() => new Map(addresses.map((addr) => [addr.address, addr])), [addresses]);
+  const allAddresses = useMemo(() => [...segwitAddresses, ...legacyAddresses], [segwitAddresses, legacyAddresses]);
+  const addressMap = useMemo(() => new Map(allAddresses.map((addr) => [addr.address, addr])), [allAddresses]);
 
   const refreshMnemonic = (value?: string) => {
     try {
       const nextMnemonic = value ?? createRandomMnemonic();
       const derived = deriveWalletFromMnemonic(nextMnemonic, 6);
       setMnemonic(nextMnemonic);
-      setAccountZpub(derived.accountXpub);
-      setAddresses(derived.addresses);
+      setAccountZpub(derived.segwitAccount.zpub);
+      setAccountXpub(derived.legacyAccount.xpub);
+      setSegwitAddresses(derived.segwitAccount.addresses);
+      setLegacyAddresses(derived.legacyAccount.addresses);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to derive wallet');
@@ -189,8 +194,12 @@ function App() {
     setLoadingUtxo(true);
     setError(null);
     try {
-      const results = await fetchUtxos(accountZpub, 'btc');
-      setUtxos(results);
+      // Fetch UTXOs for both segwit and legacy accounts
+      const [segwitResults, legacyResults] = await Promise.all([
+        fetchUtxos(accountZpub, 'btc'),
+        fetchUtxos(accountXpub, 'btc'),
+      ]);
+      setUtxos([...segwitResults, ...legacyResults]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch UTXOs');
     } finally {
@@ -230,7 +239,7 @@ function App() {
                 <Stack spacing={4}>
                   <Heading size="md">Wallet seed</Heading>
                   <Text color="gray.500">
-                    We derive a BIP84 account (native segwit, p2wpkh) and preview a handful of addresses.
+                    We derive both BIP84 (native segwit, p2wpkh) and BIP44 (legacy, p2pkh) accounts from the same seed.
                   </Text>
                   <Textarea value={mnemonic} onChange={(e) => onMnemonicChange(e.target.value)} rows={3} />
                   <HStack>
@@ -241,15 +250,31 @@ function App() {
 
               <Box p={6} rounded="lg" bg={panelBg} shadow="md">
                 <Stack spacing={3}>
-                  <Heading size="md">Account zpub (BIP84 m/84&#39;/0&#39;/0&#39;)</Heading>
+                  <Heading size="md">Native Segwit Account (BIP84 m/84&#39;/0&#39;/0&#39;)</Heading>
+                  <Text fontSize="sm" color="gray.500">zpub (for P2WPKH addresses starting with bc1)</Text>
                   <Textarea value={accountZpub} isReadOnly fontFamily="mono" rows={2} />
                 </Stack>
               </Box>
 
               <Box p={6} rounded="lg" bg={panelBg} shadow="md">
+                <Stack spacing={3}>
+                  <Heading size="md">Legacy Account (BIP44 m/44&#39;/0&#39;/0&#39;)</Heading>
+                  <Text fontSize="sm" color="gray.500">xpub (for P2PKH addresses starting with 1)</Text>
+                  <Textarea value={accountXpub} isReadOnly fontFamily="mono" rows={2} />
+                </Stack>
+              </Box>
+
+              <Box p={6} rounded="lg" bg={panelBg} shadow="md">
                 <Stack spacing={4}>
-                  <Heading size="md">Derived addresses</Heading>
-                  <AddressTable addresses={addresses} />
+                  <Heading size="md">Segwit Addresses (P2WPKH)</Heading>
+                  <AddressTable addresses={segwitAddresses} />
+                </Stack>
+              </Box>
+
+              <Box p={6} rounded="lg" bg={panelBg} shadow="md">
+                <Stack spacing={4}>
+                  <Heading size="md">Legacy Addresses (P2PKH)</Heading>
+                  <AddressTable addresses={legacyAddresses} />
                 </Stack>
               </Box>
 
@@ -257,10 +282,10 @@ function App() {
                 <Stack spacing={4}>
                   <Heading size="md">UTXO lookup (via Backend)</Heading>
                   <Text color="gray.500">
-                    Query UTXOs using the account zpub. API calls are proxied through our backend server.
+                    Query UTXOs for both segwit (zpub) and legacy (xpub) accounts. API calls are proxied through our backend server.
                   </Text>
                   <Button colorScheme="purple" onClick={handleFetchUtxos} isLoading={loadingUtxo} alignSelf="flex-start">
-                    Fetch UTXOs for zpub
+                    Fetch UTXOs for both accounts
                   </Button>
                   {error && (
                     <Alert status="error" borderRadius="md">
@@ -275,7 +300,7 @@ function App() {
           </TabPanel>
 
           <TabPanel px={0}>
-            <TransactionBuilderView mnemonic={mnemonic} utxos={utxos} addresses={addresses} />
+            <TransactionBuilderView mnemonic={mnemonic} utxos={utxos} addresses={allAddresses} />
           </TabPanel>
         </TabPanels>
       </Tabs>
