@@ -100,10 +100,6 @@ function buildPayments(address: string) {
     throw new Error(`Unsupported address format: ${address}`);
   }
 
-  if (type !== 'p2wpkh') {
-    throw new Error('Currently only native segwit UTXOs are supported for signing');
-  }
-
   if (type === 'p2wpkh') {
     const payment = bitcoin.payments.p2wpkh({ address, network });
     if (!payment.output) {
@@ -112,11 +108,15 @@ function buildPayments(address: string) {
     return { type, payment };
   }
 
-  const payment = bitcoin.payments.p2pkh({ address, network });
-  if (!payment.output) {
-    throw new Error('Failed to derive p2pkh payment');
+  if (type === 'p2pkh') {
+    const payment = bitcoin.payments.p2pkh({ address, network });
+    if (!payment.output) {
+      throw new Error('Failed to derive p2pkh payment');
+    }
+    return { type, payment };
   }
-  return { type, payment };
+
+  throw new Error(`Unsupported address type: ${type}`);
 }
 
 function deriveChildFromPath(mnemonic: string, path: string): HDKey {
@@ -217,16 +217,29 @@ export async function buildSignedTransaction(
       throw new Error(`Missing key material for ${derivation}`);
     }
 
-    const { payment } = buildPayments(utxo.address ?? '');
+    const { type, payment } = buildPayments(utxo.address ?? '');
 
-    psbt.addInput({
-      hash: utxo.txid,
-      index: utxo.vout,
-      witnessUtxo: {
-        script: payment.output!,
-        value: Number(utxo.value),
-      },
-    });
+    if (type === 'p2wpkh') {
+      // Native segwit uses witnessUtxo
+      psbt.addInput({
+        hash: utxo.txid,
+        index: utxo.vout,
+        witnessUtxo: {
+          script: payment.output!,
+          value: Number(utxo.value),
+        },
+      });
+    } else if (type === 'p2pkh') {
+      // Legacy P2PKH requires nonWitnessUtxo (full previous transaction)
+      if (!utxo.hex) {
+        throw new Error(`P2PKH input requires full transaction hex for ${utxo.txid}`);
+      }
+      psbt.addInput({
+        hash: utxo.txid,
+        index: utxo.vout,
+        nonWitnessUtxo: Buffer.from(utxo.hex, 'hex'),
+      });
+    }
 
     signers.push({ signer: createPsbtSigner(node.privateKey), index: psbt.inputCount - 1 });
   });

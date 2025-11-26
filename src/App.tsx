@@ -2,6 +2,7 @@ import {
   Alert,
   AlertDescription,
   AlertIcon,
+  Badge,
   Box,
   Button,
   Code,
@@ -31,12 +32,15 @@ import {
   Tabs,
   useColorMode,
   useColorModeValue,
+  useDisclosure,
+  VStack,
 } from '@chakra-ui/react';
 import { useEffect, useMemo, useState } from 'react';
-import { FaMoon, FaSun, FaWallet } from 'react-icons/fa';
+import { FaMoon, FaSun, FaWallet, FaKey } from 'react-icons/fa';
 import { BlockbookUtxo, fetchUtxos } from './blockbookClient';
 import { DerivedAddress, createRandomMnemonic, deriveWalletFromMnemonic } from './bitcoin';
 import TransactionBuilderView from './TransactionBuilderView';
+import AddressModal from './AddressModal';
 
 function ColorModeToggle() {
   const { colorMode, toggleColorMode } = useColorMode();
@@ -55,41 +59,38 @@ const formatBtc = (value: string | number) => {
   return `${btc.toFixed(8)} BTC (${sats.toString()} sats)`;
 };
 
-function AddressTable({ addresses }: { addresses: DerivedAddress[] }) {
+function CompactAddressPreview({ addresses }: { addresses: DerivedAddress[] }) {
   const badgeColor = useColorModeValue('purple.600', 'purple.300');
+
+  // Show one address from each type/format combination
+  const preview = [
+    addresses.find((a) => a.format === 'p2wpkh' && a.type === 'receive'),
+    addresses.find((a) => a.format === 'p2wpkh' && a.type === 'change'),
+    addresses.find((a) => a.format === 'p2pkh' && a.type === 'receive'),
+    addresses.find((a) => a.format === 'p2pkh' && a.type === 'change'),
+  ].filter((addr): addr is DerivedAddress => addr !== undefined);
+
   return (
-    <Box borderWidth="1px" borderRadius="lg" overflow="hidden">
-      <Table size="sm">
-        <Thead>
-          <Tr>
-            <Th>Type</Th>
-            <Th>Path</Th>
-            <Th>Address</Th>
-            <Th>PubKey</Th>
-          </Tr>
-        </Thead>
-        <Tbody>
-          {addresses.map((addr) => (
-            <Tr key={addr.path}>
-              <Td>
-                <Text fontWeight="semibold" color={badgeColor} textTransform="capitalize">
-                  {addr.type}
-                </Text>
-              </Td>
-              <Td fontFamily="mono" fontSize="sm">
-                {addr.path}
-              </Td>
-              <Td fontFamily="mono" fontSize="sm" wordBreak="break-all">
-                {addr.address}
-              </Td>
-              <Td fontFamily="mono" fontSize="xs" wordBreak="break-all">
-                {addr.publicKey}
-              </Td>
-            </Tr>
-          ))}
-        </Tbody>
-      </Table>
-    </Box>
+    <VStack align="stretch" spacing={2}>
+      {preview.map((addr) => (
+        <HStack key={addr.path} spacing={3} fontSize="sm">
+          <Badge colorScheme="purple" minW="60px">
+            {addr.format === 'p2wpkh' ? 'Segwit' : 'Legacy'}
+          </Badge>
+          <Badge colorScheme={addr.type === 'receive' ? 'green' : 'blue'} minW="60px">
+            {addr.type}
+          </Badge>
+          <Code fontFamily="mono" fontSize="xs" flex={1} isTruncated>
+            {addr.address}
+          </Code>
+        </HStack>
+      ))}
+      {addresses.length > 4 && (
+        <Text fontSize="xs" color="gray.500" textAlign="center">
+          ... and {addresses.length - 4} more addresses
+        </Text>
+      )}
+    </VStack>
   );
 }
 
@@ -158,23 +159,29 @@ function UtxoList({ utxos, pathLookup }: { utxos: BlockbookUtxo[]; pathLookup: M
 function App() {
   const panelBg = useColorModeValue('gray.50', 'gray.800');
   const accent = useColorModeValue('purple.600', 'purple.300');
+  const { isOpen, onOpen, onClose } = useDisclosure();
 
   const [mnemonic, setMnemonic] = useState('');
   const [accountZpub, setAccountZpub] = useState('');
-  const [addresses, setAddresses] = useState<DerivedAddress[]>([]);
+  const [accountXpub, setAccountXpub] = useState('');
+  const [segwitAddresses, setSegwitAddresses] = useState<DerivedAddress[]>([]);
+  const [legacyAddresses, setLegacyAddresses] = useState<DerivedAddress[]>([]);
   const [utxos, setUtxos] = useState<BlockbookUtxo[]>([]);
   const [loadingUtxo, setLoadingUtxo] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const addressMap = useMemo(() => new Map(addresses.map((addr) => [addr.address, addr])), [addresses]);
+  const allAddresses = useMemo(() => [...segwitAddresses, ...legacyAddresses], [segwitAddresses, legacyAddresses]);
+  const addressMap = useMemo(() => new Map(allAddresses.map((addr) => [addr.address, addr])), [allAddresses]);
 
   const refreshMnemonic = (value?: string) => {
     try {
       const nextMnemonic = value ?? createRandomMnemonic();
       const derived = deriveWalletFromMnemonic(nextMnemonic, 6);
       setMnemonic(nextMnemonic);
-      setAccountZpub(derived.accountXpub);
-      setAddresses(derived.addresses);
+      setAccountZpub(derived.segwitAccount.zpub);
+      setAccountXpub(derived.legacyAccount.xpub);
+      setSegwitAddresses(derived.segwitAccount.addresses);
+      setLegacyAddresses(derived.legacyAccount.addresses);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to derive wallet');
@@ -189,8 +196,12 @@ function App() {
     setLoadingUtxo(true);
     setError(null);
     try {
-      const results = await fetchUtxos(accountZpub, 'btc');
-      setUtxos(results);
+      // Fetch UTXOs for both segwit and legacy accounts
+      const [segwitResults, legacyResults] = await Promise.all([
+        fetchUtxos(accountZpub, 'btc'),
+        fetchUtxos(accountXpub, 'btc'),
+      ]);
+      setUtxos([...segwitResults, ...legacyResults]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch UTXOs');
     } finally {
@@ -230,7 +241,7 @@ function App() {
                 <Stack spacing={4}>
                   <Heading size="md">Wallet seed</Heading>
                   <Text color="gray.500">
-                    We derive a BIP84 account (native segwit, p2wpkh) and preview a handful of addresses.
+                    We derive both BIP84 (native segwit, p2wpkh) and BIP44 (legacy, p2pkh) accounts from the same seed.
                   </Text>
                   <Textarea value={mnemonic} onChange={(e) => onMnemonicChange(e.target.value)} rows={3} />
                   <HStack>
@@ -240,16 +251,37 @@ function App() {
               </Box>
 
               <Box p={6} rounded="lg" bg={panelBg} shadow="md">
-                <Stack spacing={3}>
-                  <Heading size="md">Account zpub (BIP84 m/84&#39;/0&#39;/0&#39;)</Heading>
-                  <Textarea value={accountZpub} isReadOnly fontFamily="mono" rows={2} />
+                <Stack spacing={4}>
+                  <Heading size="md">Account Keys</Heading>
+                  <Grid templateColumns="auto 1fr" gap={3} alignItems="center">
+                    <Text fontSize="sm" fontWeight="semibold">Segwit (BIP84):</Text>
+                    <Code fontFamily="mono" fontSize="xs" p={2} isTruncated>
+                      {accountZpub}
+                    </Code>
+
+                    <Text fontSize="sm" fontWeight="semibold">Legacy (BIP44):</Text>
+                    <Code fontFamily="mono" fontSize="xs" p={2} isTruncated>
+                      {accountXpub}
+                    </Code>
+                  </Grid>
+                  <Text fontSize="xs" color="gray.500">
+                    zpub for P2WPKH (bc1...) • xpub for P2PKH (1...)
+                  </Text>
                 </Stack>
               </Box>
 
               <Box p={6} rounded="lg" bg={panelBg} shadow="md">
                 <Stack spacing={4}>
-                  <Heading size="md">Derived addresses</Heading>
-                  <AddressTable addresses={addresses} />
+                  <HStack justify="space-between">
+                    <Heading size="md">Derived Addresses</Heading>
+                    <Button size="sm" leftIcon={<Icon as={FaKey} />} colorScheme="purple" variant="outline" onClick={onOpen}>
+                      Manage Addresses
+                    </Button>
+                  </HStack>
+                  <Text fontSize="sm" color="gray.500">
+                    One address from each chain (Segwit/Legacy × Receive/Change)
+                  </Text>
+                  <CompactAddressPreview addresses={allAddresses} />
                 </Stack>
               </Box>
 
@@ -257,10 +289,10 @@ function App() {
                 <Stack spacing={4}>
                   <Heading size="md">UTXO lookup (via Backend)</Heading>
                   <Text color="gray.500">
-                    Query UTXOs using the account zpub. API calls are proxied through our backend server.
+                    Query UTXOs for both segwit (zpub) and legacy (xpub) accounts. API calls are proxied through our backend server.
                   </Text>
                   <Button colorScheme="purple" onClick={handleFetchUtxos} isLoading={loadingUtxo} alignSelf="flex-start">
-                    Fetch UTXOs for zpub
+                    Fetch UTXOs for both accounts
                   </Button>
                   {error && (
                     <Alert status="error" borderRadius="md">
@@ -275,10 +307,12 @@ function App() {
           </TabPanel>
 
           <TabPanel px={0}>
-            <TransactionBuilderView mnemonic={mnemonic} utxos={utxos} addresses={addresses} />
+            <TransactionBuilderView mnemonic={mnemonic} utxos={utxos} addresses={allAddresses} />
           </TabPanel>
         </TabPanels>
       </Tabs>
+
+      <AddressModal isOpen={isOpen} onClose={onClose} mnemonic={mnemonic} />
     </Container>
   );
 }

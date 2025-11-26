@@ -6,6 +6,7 @@ export interface BlockbookUtxo {
   height?: number;
   address?: string;
   path?: string;
+  hex?: string; // Full previous transaction hex (needed for P2PKH signing)
 }
 
 export type NetworkSymbol = 'btc' | 'doge' | 'ltc' | 'dash';

@@ -7,18 +7,51 @@ import { deriveWalletFromMnemonic, DerivedAddress } from '../../bitcoin';
 import { BlockbookUtxo } from '../../blockbookClient';
 import * as bitcoin from 'bitcoinjs-lib';
 
+// Helper function to create a mock previous transaction for P2PKH inputs
+function createMockPrevTx(address: string, value: number, vout: number): { hex: string; txid: string } {
+  const network = bitcoin.networks.bitcoin;
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+
+  // Add a dummy input
+  tx.addInput(Buffer.alloc(32, 0), 0);
+
+  // Add outputs up to and including the vout we need
+  for (let i = 0; i <= vout; i++) {
+    if (i === vout) {
+      // This is the output we care about
+      const payment = bitcoin.payments.p2pkh({ address, network });
+      tx.addOutput(payment.output!, value);
+    } else {
+      // Dummy outputs for indices before our target vout
+      const dummyPayment = bitcoin.payments.p2pkh({ address, network });
+      tx.addOutput(dummyPayment.output!, 10000);
+    }
+  }
+
+  return {
+    hex: tx.toHex(),
+    txid: tx.getId(),
+  };
+}
+
 describe('Transaction Building Integration Tests', () => {
   // Use BIP84 test mnemonic with known addresses
   const testMnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
   // Derive wallet to get addresses and create address map
   const wallet = deriveWalletFromMnemonic(testMnemonic, 5);
-  const addressMap = new Map(wallet.addresses.map((addr) => [addr.address, addr]));
+  const allAddresses = [...wallet.segwitAccount.addresses, ...wallet.legacyAccount.addresses];
+  const addressMap = new Map(allAddresses.map((addr) => [addr.address, addr]));
 
-  // Get first receive address for tests
-  const firstReceiveAddr = wallet.addresses.find(addr => addr.type === 'receive' && addr.path.endsWith('/0/0'))!;
-  const secondReceiveAddr = wallet.addresses.find(addr => addr.type === 'receive' && addr.path.endsWith('/0/1'))!;
-  const firstChangeAddr = wallet.addresses.find(addr => addr.type === 'change' && addr.path.endsWith('/1/0'))!;
+  // Get first receive address for tests (using segwit addresses)
+  const firstReceiveAddr = wallet.segwitAccount.addresses.find(addr => addr.type === 'receive' && addr.path.endsWith('/0/0'))!;
+  const secondReceiveAddr = wallet.segwitAccount.addresses.find(addr => addr.type === 'receive' && addr.path.endsWith('/0/1'))!;
+  const firstChangeAddr = wallet.segwitAccount.addresses.find(addr => addr.type === 'change' && addr.path.endsWith('/1/0'))!;
+
+  // Get legacy addresses for P2PKH tests
+  const firstLegacyAddr = wallet.legacyAccount.addresses.find(addr => addr.type === 'receive' && addr.path.endsWith('/0/0'))!;
+  const secondLegacyAddr = wallet.legacyAccount.addresses.find(addr => addr.type === 'receive' && addr.path.endsWith('/0/1'))!;
 
   describe('Single Input, Single Output', () => {
     it('should build a valid transaction with one input and one output', async () => {
@@ -233,7 +266,7 @@ describe('Transaction Building Integration Tests', () => {
           amountSats: 150000n,
         },
         {
-          address: wallet.addresses[2].address,
+          address: wallet.segwitAccount.addresses[2].address,
           amountSats: 100000n,
         },
       ];
@@ -556,6 +589,129 @@ describe('Transaction Building Integration Tests', () => {
       // Bitcoin transactions typically use version 2
       expect(tx.version).toBeGreaterThanOrEqual(1);
       expect(tx.version).toBeLessThanOrEqual(2);
+    });
+  });
+
+  describe('Mixed P2PKH and P2WPKH Inputs', () => {
+    it('should handle P2PKH (legacy) inputs', async () => {
+      const prevTx = createMockPrevTx(firstLegacyAddr.address, 100000, 0);
+      const mockUtxos: BlockbookUtxo[] = [
+        {
+          txid: prevTx.txid,
+          vout: 0,
+          value: '100000',
+          address: firstLegacyAddr.address,
+          path: firstLegacyAddr.path,
+          hex: prevTx.hex,
+        },
+      ];
+
+      const outputs = [
+        {
+          address: secondReceiveAddr.address,
+          amountSats: 50000n,
+        },
+      ];
+
+      const result = await buildSignedTransaction(
+        testMnemonic,
+        mockUtxos,
+        outputs,
+        addressMap,
+        firstChangeAddr.address,
+        5,
+      );
+
+      expect(result.hex).toMatch(/^[0-9a-f]+$/);
+      expect(result.txId).toHaveLength(64);
+      expect(result.totalInput).toBe(100000n);
+
+      const tx = bitcoin.Transaction.fromHex(result.hex);
+      expect(tx.ins).toHaveLength(1);
+      expect(tx.outs).toHaveLength(2); // Destination + change
+    });
+
+    it('should handle mixed P2PKH and P2WPKH inputs in same transaction', async () => {
+      const legacyPrevTx = createMockPrevTx(firstLegacyAddr.address, 75000, 0);
+      const mockUtxos: BlockbookUtxo[] = [
+        {
+          txid: 'b'.repeat(64),
+          vout: 0,
+          value: '50000',
+          address: firstReceiveAddr.address, // P2WPKH
+          path: firstReceiveAddr.path,
+          // P2WPKH doesn't need hex
+        },
+        {
+          txid: legacyPrevTx.txid,
+          vout: 0,
+          value: '75000',
+          address: firstLegacyAddr.address, // P2PKH
+          path: firstLegacyAddr.path,
+          hex: legacyPrevTx.hex,
+        },
+      ];
+
+      const outputs = [
+        {
+          address: secondLegacyAddr.address,
+          amountSats: 100000n,
+        },
+      ];
+
+      const result = await buildSignedTransaction(
+        testMnemonic,
+        mockUtxos,
+        outputs,
+        addressMap,
+        firstChangeAddr.address,
+        5,
+      );
+
+      expect(result.totalInput).toBe(125000n); // 50k + 75k
+      expect(result.hex).toBeTruthy();
+
+      const tx = bitcoin.Transaction.fromHex(result.hex);
+      expect(tx.ins).toHaveLength(2);
+
+      // P2WPKH input should have witness data, P2PKH should not
+      // Note: In practice, P2PKH uses scriptSig, not witness
+      expect(tx.ins.length).toBe(2);
+    });
+
+    it('should send to P2PKH (legacy) addresses', async () => {
+      const mockUtxos: BlockbookUtxo[] = [
+        {
+          txid: 'd'.repeat(64),
+          vout: 0,
+          value: '200000',
+          address: firstReceiveAddr.address,
+          path: firstReceiveAddr.path,
+        },
+      ];
+
+      const outputs = [
+        {
+          address: firstLegacyAddr.address, // Send to legacy address
+          amountSats: 150000n,
+        },
+      ];
+
+      const result = await buildSignedTransaction(
+        testMnemonic,
+        mockUtxos,
+        outputs,
+        addressMap,
+        firstChangeAddr.address,
+        5,
+      );
+
+      expect(result.outputs).toHaveLength(2); // Destination + change
+      expect(result.outputs[0].address).toBe(firstLegacyAddr.address);
+      expect(result.outputs[0].amountSats).toBe(150000n);
+
+      const tx = bitcoin.Transaction.fromHex(result.hex);
+      expect(tx.outs).toHaveLength(2);
     });
   });
 });
