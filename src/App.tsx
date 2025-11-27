@@ -46,6 +46,7 @@ import { deriveWalletWithDiscovery } from './addressDiscovery';
 import { useNetwork } from './NetworkContext';
 import NetworkSwitcher from './NetworkSwitcher';
 import WalletUnlockView from './WalletUnlockView';
+import QRCodePopover from './QRCodePopover';
 
 function ColorModeToggle() {
   const { colorMode, toggleColorMode } = useColorMode();
@@ -85,9 +86,11 @@ function CompactAddressPreview({ addresses }: { addresses: DerivedAddress[] }) {
           <Badge colorScheme={addr.type === 'receive' ? 'green' : 'blue'} minW="60px">
             {addr.type}
           </Badge>
-          <Code fontFamily="mono" fontSize="xs" flex={1} isTruncated>
-            {addr.address}
-          </Code>
+          <QRCodePopover value={addr.address} label={`${addr.format === 'p2wpkh' ? 'Segwit' : 'Legacy'} ${addr.type} address`}>
+            <Code fontFamily="mono" fontSize="xs" flex={1} isTruncated>
+              {addr.address}
+            </Code>
+          </QRCodePopover>
         </HStack>
       ))}
       {addresses.length > 4 && (
@@ -126,7 +129,15 @@ function UtxoList({ utxos, pathLookup, ticker }: { utxos: BlockbookUtxo[]; pathL
               <Grid templateColumns={{ base: '1fr', md: 'repeat(2, minmax(0, 1fr))' }} gap={3}>
                 <GridItem>
                   <Text fontWeight="bold">Address</Text>
-                  <Text fontFamily="mono" wordBreak="break-all">{utxo.address || 'Unknown (zpub scope)'}</Text>
+                  {utxo.address ? (
+                    <QRCodePopover value={utxo.address} label="UTXO Address">
+                      <Text fontFamily="mono" wordBreak="break-all" cursor="pointer">
+                        {utxo.address}
+                      </Text>
+                    </QRCodePopover>
+                  ) : (
+                    <Text fontFamily="mono" wordBreak="break-all">Unknown (zpub scope)</Text>
+                  )}
                 </GridItem>
                 <GridItem>
                   <Text fontWeight="bold">Derivation path</Text>
@@ -393,16 +404,20 @@ function App() {
                     {networkInfo.supportsSegwit && accountZpub && (
                       <>
                         <Text fontSize="sm" fontWeight="semibold">Segwit (BIP84):</Text>
-                        <Code fontFamily="mono" fontSize="xs" p={2} isTruncated>
-                          {accountZpub}
-                        </Code>
+                        <QRCodePopover value={accountZpub} label="Segwit Account zpub (BIP84)">
+                          <Code fontFamily="mono" fontSize="xs" p={2} isTruncated>
+                            {accountZpub}
+                          </Code>
+                        </QRCodePopover>
                       </>
                     )}
 
                     <Text fontSize="sm" fontWeight="semibold">Legacy (BIP44):</Text>
-                    <Code fontFamily="mono" fontSize="xs" p={2} isTruncated>
-                      {accountXpub}
-                    </Code>
+                    <QRCodePopover value={accountXpub} label="Legacy Account xpub (BIP44)">
+                      <Code fontFamily="mono" fontSize="xs" p={2} isTruncated>
+                        {accountXpub}
+                      </Code>
+                    </QRCodePopover>
                   </Grid>
                   <Text fontSize="xs" color="gray.500">
                     {networkInfo.supportsSegwit

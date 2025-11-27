@@ -25,6 +25,7 @@ import { BlockbookTransaction } from './blockbookClient';
 import { DerivedAddress } from './bitcoin';
 import { isOwnAddress } from './addressDiscovery';
 import { useNetwork } from './NetworkContext';
+import QRCodePopover from './QRCodePopover';
 
 interface TransactionDetailsModalProps {
   isOpen: boolean;
@@ -242,9 +243,11 @@ export default function TransactionDetailsModal({
                               <Text fontSize="xs" color="gray.500" mb={1}>
                                 From Address
                               </Text>
-                              <Code fontSize="xs" wordBreak="break-all" display="block">
-                                {input.addresses[0]}
-                              </Code>
+                              <QRCodePopover value={input.addresses[0]} label="Input Address">
+                                <Code fontSize="xs" wordBreak="break-all" display="block" cursor="pointer">
+                                  {input.addresses[0]}
+                                </Code>
+                              </QRCodePopover>
                               {walletAddr && (
                                 <HStack mt={2} spacing={2} fontSize="xs">
                                   <Badge colorScheme="green" variant="subtle">
@@ -333,9 +336,11 @@ export default function TransactionDetailsModal({
                               <Text fontSize="xs" color="gray.500" mb={1}>
                                 To Address
                               </Text>
-                              <Code fontSize="xs" wordBreak="break-all" display="block">
-                                {output.addresses[0]}
-                              </Code>
+                              <QRCodePopover value={output.addresses[0]} label="Output Address">
+                                <Code fontSize="xs" wordBreak="break-all" display="block" cursor="pointer">
+                                  {output.addresses[0]}
+                                </Code>
+                              </QRCodePopover>
                               {walletAddr && (
                                 <HStack mt={2} spacing={2} fontSize="xs" flexWrap="wrap">
                                   <Badge colorScheme="green" variant="subtle">

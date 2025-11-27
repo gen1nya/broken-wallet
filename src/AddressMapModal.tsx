@@ -18,6 +18,7 @@ import {
 import { useMemo } from 'react';
 import { DerivedAddress } from './bitcoin';
 import { BlockbookTransaction } from './blockbookClient';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface AddressMapModalProps {
   isOpen: boolean;
@@ -49,7 +50,15 @@ function AddressBlock({ info }: { info: AddressInfo }) {
   return (
     <Tooltip
       label={
-        <VStack align="stretch" spacing={1}>
+        <VStack align="stretch" spacing={2}>
+          <Box bg="white" p={2} borderRadius="md" alignSelf="center">
+            <QRCodeSVG
+              value={info.address.address}
+              size={120}
+              level="M"
+              includeMargin={false}
+            />
+          </Box>
           <Text fontSize="xs" fontWeight="bold">
             Index: {info.address.index}
           </Text>

@@ -30,6 +30,7 @@ import { useState, useEffect } from 'react';
 import { FaChevronLeft, FaChevronRight } from 'react-icons/fa';
 import { DerivedAddress, deriveWalletFromMnemonic } from './bitcoin';
 import { useNetwork } from './NetworkContext';
+import QRCodePopover from './QRCodePopover';
 
 interface AddressModalProps {
   isOpen: boolean;
@@ -172,7 +173,11 @@ export default function AddressModal({ isOpen, onClose, mnemonic }: AddressModal
                               {addr.path}
                             </Td>
                             <Td fontFamily="mono" fontSize="sm" wordBreak="break-all">
-                              {addr.address}
+                              <QRCodePopover value={addr.address} label={`${addr.type} address #${absoluteIndex}`}>
+                                <Text cursor="pointer">
+                                  {addr.address}
+                                </Text>
+                              </QRCodePopover>
                             </Td>
                             <Td fontFamily="mono" fontSize="xs" wordBreak="break-all">
                               {addr.publicKey}

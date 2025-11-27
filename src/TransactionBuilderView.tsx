@@ -33,6 +33,7 @@ import { BlockbookUtxo, broadcastTransaction, getRawTransaction } from './blockb
 import { DerivedAddress } from './bitcoin';
 import { buildSignedTransaction, detectAddressType, TxBuildResult, TxOutputRequest } from './transactionBuilder';
 import { useNetwork } from './NetworkContext';
+import QRCodePopover from './QRCodePopover';
 
 interface OutputRow {
   id: string;
@@ -273,7 +274,13 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
                     </Td>
                     <Td>{formatCrypto(BigInt(utxo.value), networkInfo.ticker)}</Td>
                     <Td fontFamily="mono" fontSize="xs" wordBreak="break-all">
-                      {utxo.address ?? 'unknown'}
+                      {utxo.address ? (
+                        <QRCodePopover value={utxo.address} label="UTXO Address">
+                          <Text cursor="pointer">{utxo.address}</Text>
+                        </QRCodePopover>
+                      ) : (
+                        'unknown'
+                      )}
                     </Td>
                     <Td fontFamily="mono" fontSize="xs" wordBreak="break-all">
                       {path ?? 'missing'}
