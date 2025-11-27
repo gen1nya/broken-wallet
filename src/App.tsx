@@ -34,7 +34,7 @@ import {
   VStack,
 } from '@chakra-ui/react';
 import { useEffect, useMemo, useState } from 'react';
-import { FaMoon, FaSun, FaWallet, FaKey, FaMap, FaLock } from 'react-icons/fa';
+import { FaMoon, FaSun, FaWallet, FaKey, FaMap, FaLock, FaSync } from 'react-icons/fa';
 import { BlockbookUtxo, fetchUtxos, fetchAllTransactions, BlockbookTransaction } from './blockbookClient';
 import { DerivedAddress, createRandomMnemonic, deriveWalletFromMnemonic } from './bitcoin';
 import TransactionBuilderView from './TransactionBuilderView';
@@ -194,6 +194,11 @@ function App() {
   const allAddresses = useMemo(() => [...segwitAddresses, ...legacyAddresses], [segwitAddresses, legacyAddresses]);
   const addressMap = useMemo(() => new Map(allAddresses.map((addr) => [addr.address, addr])), [allAddresses]);
 
+  // Calculate total wallet balance
+  const walletBalance = useMemo(() => {
+    return utxos.reduce((sum, utxo) => sum + BigInt(utxo.value), 0n);
+  }, [utxos]);
+
   const refreshMnemonic = (value?: string) => {
     try {
       const nextMnemonic = value ?? createRandomMnemonic();
@@ -299,6 +304,14 @@ function App() {
     setIsLocked(false);
   };
 
+  // Auto-load UTXOs and transactions when wallet is unlocked
+  useEffect(() => {
+    if (!isLocked && mnemonic && accountXpub) {
+      handleFetchUtxos();
+      handleFetchTransactions();
+    }
+  }, [isLocked, accountXpub]);
+
   const handleLock = () => {
     setIsLocked(true);
     setMnemonic('');
@@ -311,6 +324,10 @@ function App() {
     setUtxos([]);
     setTransactions([]);
     setError(null);
+  };
+
+  const handleRefresh = async () => {
+    await Promise.all([handleFetchUtxos(), handleFetchTransactions()]);
   };
 
   // Show unlock screen if locked
@@ -333,6 +350,20 @@ function App() {
           </Heading>
         </HStack>
         <HStack spacing={3}>
+          {walletBalance > 0n && (
+            <Badge colorScheme="green" fontSize="md" px={3} py={1}>
+              {formatCrypto(walletBalance, networkInfo.ticker)}
+            </Badge>
+          )}
+          <Button
+            onClick={handleRefresh}
+            variant="ghost"
+            leftIcon={<Icon as={FaSync} />}
+            isLoading={loadingUtxo || loadingTransactions}
+            aria-label="Refresh UTXOs and transactions"
+          >
+            Refresh
+          </Button>
           <NetworkSwitcher />
           <Button
             onClick={handleLock}

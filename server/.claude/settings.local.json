@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd comprehensive transaction history with wallet address identification\n\nThis commit adds a complete transaction viewing system with automatic\naddress discovery and wallet ownership detection.\n\nBackend changes:\n- Add /api/:network/transactions endpoint for fetching transaction history\n- Add transaction types (TransactionInput, TransactionOutput, BlockbookTransaction)\n- Support isOwn field from Blockbook API for address ownership\n\nFrontend changes:\n- Add TransactionList component with transaction type classification (sent/received/internal/external)\n- Add TransactionDetailsModal with detailed input/output breakdown\n- Highlight wallet-owned addresses with purple border and \"Your Wallet\" badge\n- Show derivation path details (chain type, index, format) for known addresses\n- Calculate real wallet impact: (my outputs - my inputs) instead of total transaction value\n- Color-code amounts: green for received, red for sent\n\nAddress discovery:\n- Add addressDiscovery.ts with automatic address pool expansion\n- Analyze transaction history to find max used address index\n- Auto-derive addresses up to (max_index + gap_limit) using BIP44 gap limit concept\n- Support combined ownership detection: API isOwn field + local address map\n- Add index field to DerivedAddress type for tracking address positions\n\nTransaction classification logic:\n- Internal: ALL inputs AND outputs belong to wallet\n- Sent: wallet has inputs, but not all outputs are wallet''s\n- Received: wallet has outputs, but no wallet inputs\n- External: no wallet involvement\n\nDisplay improvements:\n- Show \"Spent\" amount for sent transactions (includes recipient + fee)\n- Show \"Received\" amount for incoming transactions\n- Show \"Transferred\" for internal moves\n- Display wallet address count per transaction (X in / Y out)\n- Add tooltips explaining transaction types\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(npm run build:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm install:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
