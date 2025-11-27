@@ -190,3 +190,28 @@ export async function fetchAllTransactions(
     totalPages: totalPages,
   };
 }
+
+/**
+ * Get raw transaction hex by txid
+ * Required for signing P2PKH (legacy) inputs
+ */
+export async function getRawTransaction(
+  txid: string,
+  network: NetworkSymbol = 'btc'
+): Promise<string> {
+  const response = await fetch(`${API_BASE}/${network}/tx/${txid}`, {
+    method: 'GET',
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+    throw new Error(`Failed to fetch raw transaction (${response.status}): ${error.message || error.error}`);
+  }
+
+  const data = await response.json();
+  if (!data?.hex || typeof data.hex !== 'string') {
+    throw new Error('Unexpected raw transaction response');
+  }
+
+  return data.hex;
+}

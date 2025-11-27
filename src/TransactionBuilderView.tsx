@@ -15,6 +15,7 @@ import {
   InputLeftAddon,
   NumberInput,
   NumberInputField,
+  Progress,
   Stack,
   Table,
   Tbody,
@@ -27,8 +28,8 @@ import {
   useColorModeValue,
 } from '@chakra-ui/react';
 import { useEffect, useMemo, useState } from 'react';
-import { FaLink, FaPaperPlane } from 'react-icons/fa';
-import { BlockbookUtxo, broadcastTransaction } from './blockbookClient';
+import { FaCheckCircle, FaExternalLinkAlt, FaLink, FaPaperPlane } from 'react-icons/fa';
+import { BlockbookUtxo, broadcastTransaction, getRawTransaction } from './blockbookClient';
 import { DerivedAddress } from './bitcoin';
 import { buildSignedTransaction, detectAddressType, TxBuildResult, TxOutputRequest } from './transactionBuilder';
 import { useNetwork } from './NetworkContext';
@@ -48,6 +49,19 @@ interface Props {
 const formatCrypto = (value: bigint, ticker: string) => {
   const btc = Number(value) / 1e8;
   return `${btc.toFixed(8)} ${ticker} (${value.toString()} sats)`;
+};
+
+const getBlockchairUrl = (network: string, txid: string): string => {
+  // Map network symbols to blockchair network names
+  const networkMap: Record<string, string> = {
+    btc: 'bitcoin',
+    ltc: 'litecoin',
+    doge: 'dogecoin',
+    dash: 'dash',
+  };
+
+  const networkName = networkMap[network] || 'bitcoin';
+  return `https://blockchair.com/${networkName}/transaction/${txid}`;
 };
 
 export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
@@ -70,6 +84,11 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [broadcasting, setBroadcasting] = useState(false);
   const [broadcastedTxId, setBroadcastedTxId] = useState<string | null>(null);
+
+  // Cache for raw transaction hex (needed for P2PKH inputs)
+  const [txHexCache, setTxHexCache] = useState<Record<string, string>>({});
+  const [fetchingHex, setFetchingHex] = useState(false);
+  const [hexProgress, setHexProgress] = useState({ current: 0, total: 0 });
 
   useEffect(() => {
     setChangeAddress(changeCandidate);
@@ -108,7 +127,7 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
         throw new Error('Each output needs an address and amount');
       }
 
-      const encoding = detectAddressType(row.address);
+      const encoding = detectAddressType(row.address, network);
       if (!encoding) {
         throw new Error(`Unsupported address ${row.address}`);
       }
@@ -128,15 +147,60 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
   const handleBuild = async () => {
     setError(null);
     setBroadcastedTxId(null);
+    setFetchingHex(false);
+
     try {
       const parsedOutputs = parseOutputs();
+
+      // Use a local variable to track the current hex cache
+      let currentHexCache = txHexCache;
+
+      // Check which selected UTXOs need hex data (legacy P2PKH without hex)
+      const utxosNeedingHex = selectedUtxoList.filter((utxo) => {
+        const addressType = detectAddressType(utxo.address ?? '', network);
+        const isLegacy = addressType === 'p2pkh';
+        const hasHex = !!utxo.hex || !!currentHexCache[utxo.txid];
+        return isLegacy && !hasHex;
+      });
+
+      // Fetch hex for UTXOs that need it
+      if (utxosNeedingHex.length > 0) {
+        setFetchingHex(true);
+        setHexProgress({ current: 0, total: utxosNeedingHex.length });
+
+        const newHexCache: Record<string, string> = { ...currentHexCache };
+
+        for (let i = 0; i < utxosNeedingHex.length; i++) {
+          const utxo = utxosNeedingHex[i];
+          try {
+            const hex = await getRawTransaction(utxo.txid, network);
+            newHexCache[utxo.txid] = hex;
+            setHexProgress({ current: i + 1, total: utxosNeedingHex.length });
+          } catch (err) {
+            throw new Error(`Failed to fetch hex for ${utxo.txid}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          }
+        }
+
+        // Update both local variable and state
+        currentHexCache = newHexCache;
+        setTxHexCache(newHexCache);
+        setFetchingHex(false);
+      }
+
+      // Add hex to UTXOs from cache (use local variable for immediate access)
+      const utxosWithHex = selectedUtxoList.map((utxo) => ({
+        ...utxo,
+        hex: utxo.hex || currentHexCache[utxo.txid],
+      }));
+
       const result = await buildSignedTransaction(
         mnemonic,
-        selectedUtxoList,
+        utxosWithHex,
         parsedOutputs,
         addressMap,
         changeAddress || null,
         feeRate,
+        network,
       );
 
       setBuildResult(result);
@@ -145,6 +209,7 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
       setBuildResult(null);
       setRawTx('');
       setError(err instanceof Error ? err.message : 'Unable to build transaction');
+      setFetchingHex(false);
     }
   };
 
@@ -180,6 +245,7 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
                 <Th>Address</Th>
                 <Th>Derivation path</Th>
                 <Th>Confirmations</Th>
+                <Th>Type</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -187,6 +253,10 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
                 const key = `${utxo.txid}:${utxo.vout}`;
                 const checked = !!selectedUtxos[key];
                 const path = utxo.path || addressMap.get(utxo.address ?? '')?.path;
+                const addressType = detectAddressType(utxo.address ?? '', network);
+                const isLegacy = addressType === 'p2pkh';
+                const hasHex = !!utxo.hex || !!txHexCache[utxo.txid];
+
                 return (
                   <Tr key={key}>
                     <Td>
@@ -209,6 +279,16 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
                       {path ?? 'missing'}
                     </Td>
                     <Td>{utxo.confirmations ?? '—'}</Td>
+                    <Td>
+                      <HStack spacing={1}>
+                        <Badge colorScheme={isLegacy ? 'orange' : 'green'} fontSize="xs">
+                          {addressType?.toUpperCase() ?? '?'}
+                        </Badge>
+                        {isLegacy && hasHex && (
+                          <Icon as={FaCheckCircle} color="green.500" boxSize={3} title="Raw transaction data available" />
+                        )}
+                      </HStack>
+                    </Td>
                   </Tr>
                 );
               })}
@@ -278,8 +358,28 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
             </GridItem>
           </Grid>
 
+          {fetchingHex && (
+            <Box>
+              <Text fontSize="sm" mb={2}>
+                Fetching raw transaction data for legacy inputs... ({hexProgress.current}/{hexProgress.total})
+              </Text>
+              <Progress
+                value={(hexProgress.current / hexProgress.total) * 100}
+                colorScheme="purple"
+                hasStripe
+                isAnimated
+              />
+            </Box>
+          )}
+
           <HStack spacing={3} align="center">
-            <Button colorScheme="purple" onClick={handleBuild} isDisabled={!selectedUtxoList.length}>
+            <Button
+              colorScheme="purple"
+              onClick={handleBuild}
+              isDisabled={!selectedUtxoList.length}
+              isLoading={fetchingHex}
+              loadingText="Fetching hex data..."
+            >
               Build transaction
             </Button>
             <Button
@@ -299,9 +399,19 @@ export function TransactionBuilderView({ mnemonic, utxos, addresses }: Props) {
             </Text>
           )}
           {broadcastedTxId && (
-            <Text color="green.400" fontWeight="semibold">
-              Broadcasted! TXID: {broadcastedTxId}
-            </Text>
+            <Stack spacing={2}>
+              <Text color="green.400" fontWeight="semibold">
+                Broadcasted! TXID: {broadcastedTxId}
+              </Text>
+              <Button
+                size="sm"
+                colorScheme="blue"
+                leftIcon={<Icon as={FaExternalLinkAlt} />}
+                onClick={() => window.open(getBlockchairUrl(network, broadcastedTxId), '_blank')}
+              >
+                View on Blockchair
+              </Button>
+            </Stack>
           )}
         </Stack>
       </Box>

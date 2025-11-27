@@ -5,8 +5,46 @@ import * as bitcoin from 'bitcoinjs-lib';
 import * as secp256k1 from '@noble/secp256k1';
 import { hmac } from '@noble/hashes/hmac';
 import { sha256 } from '@noble/hashes/sha256';
-import { BlockbookUtxo } from './blockbookClient';
+import { BlockbookUtxo, NetworkSymbol } from './blockbookClient';
 import { DerivedAddress } from './bitcoin';
+
+// Network configurations for different cryptocurrencies
+export const NETWORK_CONFIGS: Record<NetworkSymbol, bitcoin.Network> = {
+  btc: bitcoin.networks.bitcoin,
+  ltc: {
+    messagePrefix: '\x19Litecoin Signed Message:\n',
+    bech32: 'ltc',
+    bip32: {
+      public: 0x019da462,
+      private: 0x019d9cfe,
+    },
+    pubKeyHash: 0x30,
+    scriptHash: 0x32,
+    wif: 0xb0,
+  },
+  doge: {
+    messagePrefix: '\x19Dogecoin Signed Message:\n',
+    bech32: 'doge', // Dogecoin doesn't officially support bech32, but defined for compatibility
+    bip32: {
+      public: 0x02facafd,
+      private: 0x02fac398,
+    },
+    pubKeyHash: 0x1e,
+    scriptHash: 0x16,
+    wif: 0x9e,
+  },
+  dash: {
+    messagePrefix: '\x19DarkCoin Signed Message:\n',
+    bech32: 'dash', // Dash doesn't support bech32
+    bip32: {
+      public: 0x0488b21e,
+      private: 0x0488ade4,
+    },
+    pubKeyHash: 0x4c,
+    scriptHash: 0x10,
+    wif: 0xcc,
+  },
+};
 
 const ACCOUNT_PATH = "m/84'/0'/0'";
 
@@ -53,8 +91,8 @@ export interface TxBuildResult {
   effectiveFeeRate: number;
 }
 
-function getNetwork() {
-  return bitcoin.networks.bitcoin;
+function getNetwork(networkSymbol: NetworkSymbol = 'btc'): bitcoin.Network {
+  return NETWORK_CONFIGS[networkSymbol];
 }
 
 function fingerprintBuffer(node: HDKey): Buffer {
@@ -63,7 +101,10 @@ function fingerprintBuffer(node: HDKey): Buffer {
   return buffer;
 }
 
-export function detectAddressType(address: string): AddressEncoding | null {
+export function detectAddressType(address: string, networkSymbol: NetworkSymbol = 'btc'): AddressEncoding | null {
+  const network = getNetwork(networkSymbol);
+
+  // Try bech32 (segwit) format first
   try {
     const decoded = bitcoin.address.fromBech32(address);
     if (decoded.version === 0 && decoded.data.length === 20) {
@@ -73,9 +114,10 @@ export function detectAddressType(address: string): AddressEncoding | null {
     // ignore
   }
 
+  // Try base58 (legacy) format
   try {
     const decoded = bitcoin.address.fromBase58Check(address);
-    if (decoded.version === bitcoin.networks.bitcoin.pubKeyHash) {
+    if (decoded.version === network.pubKeyHash) {
       return 'p2pkh';
     }
   } catch {
@@ -93,9 +135,9 @@ function estimateInputWeight(type: AddressEncoding): number {
   return type === 'p2wpkh' ? 68 : 148;
 }
 
-function buildPayments(address: string) {
-  const network = getNetwork();
-  const type = detectAddressType(address);
+function buildPayments(address: string, networkSymbol: NetworkSymbol) {
+  const network = getNetwork(networkSymbol);
+  const type = detectAddressType(address, networkSymbol);
   if (!type) {
     throw new Error(`Unsupported address format: ${address}`);
   }
@@ -138,6 +180,7 @@ export async function buildSignedTransaction(
   addressMap: Map<string, DerivedAddress>,
   changeAddress: string | null,
   feeRate: number,
+  networkSymbol: NetworkSymbol = 'btc',
 ): Promise<TxBuildResult> {
   if (!utxos.length) {
     throw new Error('Select at least one UTXO');
@@ -147,13 +190,13 @@ export async function buildSignedTransaction(
     throw new Error('Add at least one output or specify a change address');
   }
 
-  const network = getNetwork();
+  const network = getNetwork(networkSymbol);
   const account = deriveAccountNode(mnemonic);
   const psbt = new bitcoin.Psbt({ network });
   const inputTotal = utxos.reduce((sum, utxo) => sum + BigInt(utxo.value), 0n);
 
   const outputWithTypes = outputs.map((output) => {
-    const type = detectAddressType(output.address);
+    const type = detectAddressType(output.address, networkSymbol);
     if (!type) {
       throw new Error(`Unsupported output address: ${output.address}`);
     }
@@ -164,12 +207,12 @@ export async function buildSignedTransaction(
   let changeValue = 0n;
 
   if (changeAddress) {
-    const changeType = detectAddressType(changeAddress);
+    const changeType = detectAddressType(changeAddress, networkSymbol);
     if (!changeType) {
       throw new Error('Change address must be p2pkh or p2wpkh');
     }
 
-    const inputTypes = utxos.map((utxo) => detectAddressType(utxo.address ?? ''));
+    const inputTypes = utxos.map((utxo) => detectAddressType(utxo.address ?? '', networkSymbol));
     const estimatedVsize =
       10 +
       inputTypes.reduce((total, t) => total + estimateInputWeight(t ?? 'p2wpkh'), 0) +
@@ -217,7 +260,7 @@ export async function buildSignedTransaction(
       throw new Error(`Missing key material for ${derivation}`);
     }
 
-    const { type, payment } = buildPayments(utxo.address ?? '');
+    const { type, payment } = buildPayments(utxo.address ?? '', networkSymbol);
 
     if (type === 'p2wpkh') {
       // Native segwit uses witnessUtxo

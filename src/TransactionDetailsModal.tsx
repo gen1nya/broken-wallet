@@ -1,6 +1,7 @@
 import {
   Badge,
   Box,
+  Button,
   Code,
   Divider,
   Flex,
@@ -19,7 +20,7 @@ import {
   VStack,
   useColorModeValue,
 } from '@chakra-ui/react';
-import { FaArrowDown, FaArrowRight, FaWallet } from 'react-icons/fa';
+import { FaArrowDown, FaArrowRight, FaExternalLinkAlt, FaWallet } from 'react-icons/fa';
 import { BlockbookTransaction } from './blockbookClient';
 import { DerivedAddress } from './bitcoin';
 import { isOwnAddress } from './addressDiscovery';
@@ -49,13 +50,26 @@ const formatDate = (timestamp?: number) => {
   return date.toLocaleString();
 };
 
+const getBlockchairUrl = (network: string, txid: string): string => {
+  // Map network symbols to blockchair network names
+  const networkMap: Record<string, string> = {
+    btc: 'bitcoin',
+    ltc: 'litecoin',
+    doge: 'dogecoin',
+    dash: 'dash',
+  };
+
+  const networkName = networkMap[network] || 'bitcoin';
+  return `https://blockchair.com/${networkName}/transaction/${txid}`;
+};
+
 export default function TransactionDetailsModal({
   isOpen,
   onClose,
   transaction,
   addressMap,
 }: TransactionDetailsModalProps) {
-  const { networkInfo } = useNetwork();
+  const { network, networkInfo } = useNetwork();
   const panelBg = useColorModeValue('gray.50', 'gray.700');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
   const walletBg = useColorModeValue('purple.50', 'purple.900');
@@ -79,13 +93,24 @@ export default function TransactionDetailsModal({
           <Stack spacing={6}>
             <Box p={4} bg={panelBg} borderRadius="lg">
               <Grid templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={4}>
-                <GridItem>
+                <GridItem colSpan={{ base: 1, md: 2 }}>
                   <Text fontSize="sm" fontWeight="bold" color="gray.500" mb={1}>
                     Transaction ID
                   </Text>
-                  <Code fontSize="xs" wordBreak="break-all" display="block" p={2}>
-                    {transaction.txid}
-                  </Code>
+                  <HStack spacing={2} align="flex-start">
+                    <Code fontSize="xs" wordBreak="break-all" display="block" p={2} flex="1">
+                      {transaction.txid}
+                    </Code>
+                    <Button
+                      size="sm"
+                      colorScheme="blue"
+                      leftIcon={<Icon as={FaExternalLinkAlt} />}
+                      onClick={() => window.open(getBlockchairUrl(network, transaction.txid), '_blank')}
+                      flexShrink={0}
+                    >
+                      View on Blockchair
+                    </Button>
+                  </HStack>
                 </GridItem>
 
                 <GridItem>

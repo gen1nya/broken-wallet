@@ -153,4 +153,41 @@ export class NowNodesService {
       throw error;
     }
   }
+
+  /**
+   * Get raw transaction hex by txid
+   * Required for signing P2PKH (legacy) inputs
+   */
+  async getRawTransaction(
+    network: NetworkSymbol,
+    txid: string
+  ): Promise<string> {
+    const networkConfig = getNetwork(network);
+    const url = `${networkConfig.blockbookUrl}/api/v2/tx-specific/${encodeURIComponent(txid)}`;
+
+    try {
+      const response = await axios.get(url, {
+        headers: {
+          'api-key': this.apiKey,
+        },
+        timeout: 30000,
+      });
+
+      const data = response.data;
+
+      // The response should contain a 'hex' field with the raw transaction
+      if (data?.hex && typeof data.hex === 'string') {
+        return data.hex;
+      }
+
+      throw new Error('Transaction hex not found in response');
+    } catch (error) {
+      if (error instanceof AxiosError) {
+        const status = error.response?.status || 500;
+        const message = error.response?.data?.error || error.message;
+        throw new Error(`Failed to fetch raw transaction (${status}): ${message}`);
+      }
+      throw error;
+    }
+  }
 }

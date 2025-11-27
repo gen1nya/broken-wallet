@@ -184,4 +184,42 @@ router.get('/:network/info', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/:network/tx/:txid
+ * Get raw transaction hex by txid
+ * Required for signing P2PKH (legacy) inputs
+ */
+router.get('/:network/tx/:txid', async (req: Request, res: Response) => {
+  try {
+    const { network, txid } = req.params;
+
+    if (!isSupportedNetwork(network)) {
+      return res.status(400).json({
+        error: 'Invalid network',
+        message: `Network '${network}' is not supported`,
+      });
+    }
+
+    if (!txid || typeof txid !== 'string') {
+      return res.status(400).json({
+        error: 'Invalid request',
+        message: 'txid is required',
+      });
+    }
+
+    const hex = await getNowNodesService().getRawTransaction(
+      network as NetworkSymbol,
+      txid
+    );
+
+    res.json({ txid, hex });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Failed to fetch raw transaction',
+      message,
+    });
+  }
+});
+
 export default router;
