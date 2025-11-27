@@ -304,9 +304,9 @@ export default function TransactionDetailsModal({
                         p={3}
                         borderWidth="2px"
                         borderColor={isWalletAddress ? walletBorder : borderColor}
+                        borderStyle={output.spent ? 'dashed' : 'solid'}
                         bg={isWalletAddress ? walletBg : 'transparent'}
                         borderRadius="md"
-                        opacity={output.spent ? 0.7 : 1}
                       >
                         <Stack spacing={2}>
                           <HStack justify="space-between" flexWrap="wrap">
