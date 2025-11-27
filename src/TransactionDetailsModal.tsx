@@ -224,8 +224,11 @@ export default function TransactionDetailsModal({
                             <HStack>
                               <Badge colorScheme="blue">Input #{index}</Badge>
                               {isWalletAddress && (
-                                <Badge colorScheme="purple" leftIcon={<Icon as={FaWallet} />}>
-                                  Your Wallet
+                                <Badge colorScheme="purple">
+                                  <HStack spacing={1}>
+                                    <Icon as={FaWallet} boxSize={3} />
+                                    <span>Your Wallet</span>
+                                  </HStack>
                                 </Badge>
                               )}
                             </HStack>
@@ -307,8 +310,11 @@ export default function TransactionDetailsModal({
                             <HStack>
                               <Badge colorScheme="purple">Output #{index}</Badge>
                               {isWalletAddress && (
-                                <Badge colorScheme="purple" leftIcon={<Icon as={FaWallet} />}>
-                                  Your Wallet
+                                <Badge colorScheme="purple">
+                                  <HStack spacing={1}>
+                                    <Icon as={FaWallet} boxSize={3} />
+                                    <span>Your Wallet</span>
+                                  </HStack>
                                 </Badge>
                               )}
                               {output.spent && (

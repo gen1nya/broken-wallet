@@ -125,8 +125,11 @@ export default function TransactionList({ transactions, onTransactionClick, addr
                       'External transaction'
                     }
                   >
-                    <Badge colorScheme={txColor} leftIcon={<Icon as={txIcon} />}>
-                      {txType.charAt(0).toUpperCase() + txType.slice(1)}
+                    <Badge colorScheme={txColor}>
+                      <HStack spacing={1}>
+                        <Icon as={txIcon} boxSize={3} />
+                        <span>{txType.charAt(0).toUpperCase() + txType.slice(1)}</span>
+                      </HStack>
                     </Badge>
                   </Tooltip>
                   <Badge colorScheme={isConfirmed ? 'green' : 'yellow'}>
@@ -163,7 +166,7 @@ export default function TransactionList({ transactions, onTransactionClick, addr
                       'inherit'
                     }
                   >
-                    {walletImpact > 0n ? '+' : walletImpact < 0n ? '-' : ''}{formatCrypto(walletImpact < 0n ? -walletImpact : walletImpact, networkInfo.ticker)}
+                    {walletImpact > 0n ? '+' : walletImpact < 0n ? '-' : ''}{formatCrypto(Number(walletImpact < 0n ? -walletImpact : walletImpact), networkInfo.ticker)}
                   </Text>
                 </Box>
                 <Box>
