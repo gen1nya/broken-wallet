@@ -76,9 +76,50 @@ Interfaces with NowNodes' Blockbook API:
 - **Proxying**: Development server proxies `/nownodes` → `https://btcbook.nownodes.io` to avoid CORS
 - **API Keys**: Optional `api-key` header can be passed to avoid rate limits
 
+### Wallet Storage (src/walletStorage.ts)
+
+Secure persistent storage for mnemonics using Web Crypto API:
+- **Encryption**: AES-256-GCM (authenticated encryption)
+- **Key Derivation**: PBKDF2 with SHA-256 (100,000 iterations)
+- **Storage Format**: Versioned JSON in localStorage with unique salt/IV per wallet
+- **Security**: Passwords never stored, mnemonics encrypted at rest
+
+Key functions: `encryptWallet()`, `decryptWallet()`, `saveWallet()`, `deleteWallet()`, `listWallets()`
+
+Storage structure:
+```typescript
+{
+  version: 1,
+  wallets: {
+    "wallet-id": {
+      name: "My Wallet",
+      createdAt: "2025-11-27T...",
+      crypto: {
+        cipher: "aes-256-gcm",
+        kdf: "pbkdf2",
+        kdfParams: { iterations: 100000, hash: "SHA-256", salt: "hex" },
+        iv: "hex",
+        ciphertext: "hex"
+      }
+    }
+  }
+}
+```
+
 ### UI Components
 
-**App.tsx** - Main layout with two tabs:
+**WalletUnlockView.tsx** - Authentication and wallet management:
+- **Import/Create**: Mnemonic input with generate random option
+- **Temporary Mode**: In-memory wallet (lost on refresh)
+- **Encrypted Storage**: Save with password-protected encryption
+- **Wallet List**: Displays all saved wallets with unlock/delete actions
+- **Security Badges**: Shows encryption method (AES-256, PBKDF2)
+
+**App.tsx** - Main layout with wallet lock/unlock flow:
+- **Lock State**: Shows `WalletUnlockView` when locked
+- **Unlocked State**: Two tabs (Wallet and Transaction builder)
+- **Lock Button**: Clears all wallet data from memory
+- **Wallet Name**: Displays current wallet name in header (if saved)
 1. **Wallet tab**: Mnemonic management, zpub display, address derivation table, UTXO viewer
 2. **Transaction builder tab**: Rendered by `TransactionBuilderView.tsx`
 
@@ -152,7 +193,35 @@ Network configs are in `server/src/config/networks.ts`.
 
 ## Security Considerations
 
-- Mnemonics are generated client-side and never transmitted
-- Private keys are derived in-memory only for signing operations
-- All cryptographic operations use vetted libraries (`@scure/*`, `@noble/*`, `bitcoinjs-lib`)
-- This is an educational/experimental wallet - not intended for production use with real funds
+### Cryptographic Security
+- **Mnemonics**: Generated client-side using `@scure/bip39`, never transmitted
+- **Private Keys**: Derived in-memory only for signing, cleared on lock
+- **Storage Encryption**: AES-256-GCM with PBKDF2 key derivation (100k iterations)
+- **Randomness**: Uses `crypto.getRandomValues()` for salts and IVs
+- **Libraries**: All crypto uses vetted libraries (`@scure/*`, `@noble/*`, `bitcoinjs-lib`)
+
+### XSS Protection
+- **React Auto-Escaping**: All user input automatically escaped
+- **Content Security Policy**: Meta-tag CSP in `index.html` restricts script execution
+  - Dev mode: Allows `unsafe-inline`/`unsafe-eval` for Vite HMR
+  - Production: Should use strict CSP via HTTP headers (see `index.prod.html`)
+- **No Dangerous Patterns**: No `dangerouslySetInnerHTML`, `eval()`, or inline handlers
+- **TypeScript**: Strict typing prevents common injection bugs
+
+### Known Limitations
+- **Supply Chain XSS**: CSP cannot prevent malicious npm packages
+- **Browser Extensions**: Malicious extensions can read memory/localStorage
+- **Weak Passwords**: User-chosen passwords can be brute-forced (8-char minimum enforced)
+- **System Malware**: Keyloggers and OS-level attacks cannot be prevented
+- **Physical Access**: localStorage encryption provides time-based defense only
+
+See `SECURITY.md` for detailed threat model and hardening recommendations.
+
+### Production Deployment
+- **HTTPS Required**: Use valid TLS certificates
+- **Strict CSP**: Remove `unsafe-inline`/`unsafe-eval` from CSP
+- **Security Headers**: Add `X-Frame-Options`, `Strict-Transport-Security`, etc.
+- **Environment Variables**: Never hardcode secrets in source code
+- **Dependency Audits**: Run `npm audit` regularly
+
+This is an educational/experimental wallet - not intended for production use with real funds.

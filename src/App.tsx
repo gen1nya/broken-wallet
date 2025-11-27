@@ -34,7 +34,7 @@ import {
   VStack,
 } from '@chakra-ui/react';
 import { useEffect, useMemo, useState } from 'react';
-import { FaMoon, FaSun, FaWallet, FaKey, FaMap } from 'react-icons/fa';
+import { FaMoon, FaSun, FaWallet, FaKey, FaMap, FaLock } from 'react-icons/fa';
 import { BlockbookUtxo, fetchUtxos, fetchAllTransactions, BlockbookTransaction } from './blockbookClient';
 import { DerivedAddress, createRandomMnemonic, deriveWalletFromMnemonic } from './bitcoin';
 import TransactionBuilderView from './TransactionBuilderView';
@@ -45,6 +45,7 @@ import AddressMapModal from './AddressMapModal';
 import { deriveWalletWithDiscovery } from './addressDiscovery';
 import { useNetwork } from './NetworkContext';
 import NetworkSwitcher from './NetworkSwitcher';
+import WalletUnlockView from './WalletUnlockView';
 
 function ColorModeToggle() {
   const { colorMode, toggleColorMode } = useColorMode();
@@ -168,6 +169,11 @@ function App() {
   const { isOpen: isTxModalOpen, onOpen: onTxModalOpen, onClose: onTxModalClose } = useDisclosure();
   const { isOpen: isMapModalOpen, onOpen: onMapModalOpen, onClose: onMapModalClose } = useDisclosure();
 
+  // Wallet lock state
+  const [isLocked, setIsLocked] = useState(true);
+  const [currentWalletId, setCurrentWalletId] = useState<string | undefined>(undefined);
+  const [currentWalletName, setCurrentWalletName] = useState<string | undefined>(undefined);
+
   const [mnemonic, setMnemonic] = useState('');
   const [accountZpub, setAccountZpub] = useState('');
   const [accountXpub, setAccountXpub] = useState('');
@@ -207,8 +213,6 @@ function App() {
   useEffect(() => {
     if (mnemonic) {
       refreshMnemonic(mnemonic);
-    } else {
-      refreshMnemonic();
     }
     // Clear UTXOs and transactions when network changes
     setUtxos([]);
@@ -287,24 +291,57 @@ function App() {
     onTxModalOpen();
   };
 
-  const onMnemonicChange = (value: string) => {
-    setMnemonic(value);
-    try {
-      refreshMnemonic(value);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Invalid mnemonic');
-    }
+  const handleUnlock = (unlockedMnemonic: string, walletId?: string, walletName?: string) => {
+    setMnemonic(unlockedMnemonic);
+    setCurrentWalletId(walletId);
+    setCurrentWalletName(walletName);
+    refreshMnemonic(unlockedMnemonic);
+    setIsLocked(false);
   };
+
+  const handleLock = () => {
+    setIsLocked(true);
+    setMnemonic('');
+    setCurrentWalletId(undefined);
+    setCurrentWalletName(undefined);
+    setAccountZpub('');
+    setAccountXpub('');
+    setSegwitAddresses([]);
+    setLegacyAddresses([]);
+    setUtxos([]);
+    setTransactions([]);
+    setError(null);
+  };
+
+  // Show unlock screen if locked
+  if (isLocked) {
+    return <WalletUnlockView onUnlock={handleUnlock} />;
+  }
 
   return (
     <Container maxW="5xl" py={12}>
       <Flex justify="space-between" align="center" mb={10}>
         <HStack spacing={3}>
           <Icon as={FaWallet} boxSize={8} color={accent} />
-          <Heading size="lg">Broken Wallet</Heading>
+          <Heading size="lg">
+            Broken Wallet
+            {currentWalletName && (
+              <Text as="span" fontSize="md" fontWeight="normal" ml={3} color="gray.500">
+                · {currentWalletName}
+              </Text>
+            )}
+          </Heading>
         </HStack>
         <HStack spacing={3}>
           <NetworkSwitcher />
+          <Button
+            onClick={handleLock}
+            variant="ghost"
+            leftIcon={<Icon as={FaLock} />}
+            aria-label="Lock wallet"
+          >
+            Lock
+          </Button>
           <ColorModeToggle />
         </HStack>
       </Flex>
@@ -318,21 +355,6 @@ function App() {
         <TabPanels>
           <TabPanel px={0}>
             <Stack spacing={8}>
-              <Box p={6} rounded="lg" bg={panelBg} shadow="md">
-                <Stack spacing={4}>
-                  <Heading size="md">Wallet seed</Heading>
-                  <Text color="gray.500">
-                    {networkInfo.supportsSegwit
-                      ? 'We derive both BIP84 (native segwit, p2wpkh) and BIP44 (legacy, p2pkh) accounts from the same seed.'
-                      : 'We derive BIP44 (legacy, p2pkh) account from the seed.'}
-                  </Text>
-                  <Textarea value={mnemonic} onChange={(e) => onMnemonicChange(e.target.value)} rows={3} />
-                  <HStack>
-                    <Button colorScheme="purple" onClick={() => refreshMnemonic()}>Generate new mnemonic</Button>
-                  </HStack>
-                </Stack>
-              </Box>
-
               <Box p={6} rounded="lg" bg={panelBg} shadow="md">
                 <Stack spacing={4}>
                   <Heading size="md">Account Keys</Heading>
