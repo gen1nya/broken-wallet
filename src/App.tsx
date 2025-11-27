@@ -66,8 +66,8 @@ function ColorModeToggle() {
   );
 }
 
-const formatCrypto = (value: string | number, ticker: string) => {
-  const sats = typeof value === 'string' ? BigInt(value) : BigInt(value);
+const formatCrypto = (value: string | number | bigint, ticker: string) => {
+  const sats = typeof value === 'string' ? BigInt(value) : typeof value === 'bigint' ? value : BigInt(value);
   const btc = Number(sats) / 1e8;
   return `${btc.toFixed(8)} ${ticker} (${sats.toString()} sats)`;
 };
