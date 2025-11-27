@@ -32,9 +32,16 @@ import {
   useColorModeValue,
   useDisclosure,
   VStack,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  ModalCloseButton,
 } from '@chakra-ui/react';
 import { useEffect, useMemo, useState } from 'react';
-import { FaMoon, FaSun, FaWallet, FaKey, FaMap, FaLock, FaSync } from 'react-icons/fa';
+import { FaMoon, FaSun, FaWallet, FaKey, FaMap, FaLock, FaSync, FaSignOutAlt } from 'react-icons/fa';
 import { BlockbookUtxo, fetchUtxos, fetchAllTransactions, BlockbookTransaction } from './blockbookClient';
 import { DerivedAddress, createRandomMnemonic, deriveWalletFromMnemonic } from './bitcoin';
 import TransactionBuilderView from './TransactionBuilderView';
@@ -179,6 +186,7 @@ function App() {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const { isOpen: isTxModalOpen, onOpen: onTxModalOpen, onClose: onTxModalClose } = useDisclosure();
   const { isOpen: isMapModalOpen, onOpen: onMapModalOpen, onClose: onMapModalClose } = useDisclosure();
+  const { isOpen: isExitModalOpen, onOpen: onExitModalOpen, onClose: onExitModalClose } = useDisclosure();
 
   // Wallet lock state
   const [isLocked, setIsLocked] = useState(true);
@@ -197,6 +205,7 @@ function App() {
   const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txProgress, setTxProgress] = useState<{ current: number; total: number } | null>(null);
+  const [showMnemonicInExitModal, setShowMnemonicInExitModal] = useState(false);
 
   // Constants for transaction fetching
   const TX_PAGE_SIZE = 1000; // Max page size supported by NowNodes
@@ -209,6 +218,9 @@ function App() {
   const walletBalance = useMemo(() => {
     return utxos.reduce((sum, utxo) => sum + BigInt(utxo.value), 0n);
   }, [utxos]);
+
+  // Check if wallet is in temporary (in-memory) mode
+  const isTemporaryWallet = !currentWalletId;
 
   const refreshMnemonic = (value?: string) => {
     try {
@@ -323,6 +335,17 @@ function App() {
     }
   }, [isLocked, accountXpub]);
 
+  const handleLockOrExit = () => {
+    if (isTemporaryWallet) {
+      // For temporary wallets, show confirmation modal
+      setShowMnemonicInExitModal(false);
+      onExitModalOpen();
+    } else {
+      // For saved wallets, just lock
+      handleLock();
+    }
+  };
+
   const handleLock = () => {
     setIsLocked(true);
     setMnemonic('');
@@ -335,6 +358,11 @@ function App() {
     setUtxos([]);
     setTransactions([]);
     setError(null);
+  };
+
+  const handleConfirmExit = () => {
+    handleLock();
+    onExitModalClose();
   };
 
   const handleRefresh = async () => {
@@ -377,12 +405,13 @@ function App() {
           </Button>
           <NetworkSwitcher />
           <Button
-            onClick={handleLock}
+            onClick={handleLockOrExit}
             variant="ghost"
-            leftIcon={<Icon as={FaLock} />}
-            aria-label="Lock wallet"
+            leftIcon={<Icon as={isTemporaryWallet ? FaSignOutAlt : FaLock} />}
+            colorScheme={isTemporaryWallet ? 'red' : undefined}
+            aria-label={isTemporaryWallet ? 'Exit temporary wallet' : 'Lock wallet'}
           >
-            Lock
+            {isTemporaryWallet ? 'Exit' : 'Lock'}
           </Button>
           <ColorModeToggle />
         </HStack>
@@ -534,6 +563,62 @@ function App() {
         legacyAddresses={legacyAddresses}
         transactions={transactions}
       />
+
+      {/* Exit Confirmation Modal for Temporary Wallets */}
+      <Modal isOpen={isExitModalOpen} onClose={onExitModalClose} isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Exit Temporary Wallet?</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <VStack align="stretch" spacing={4}>
+              <Alert status="warning">
+                <AlertIcon />
+                <AlertDescription>
+                  This wallet is temporary and not saved. Exiting will permanently delete all wallet data including your mnemonic.
+                </AlertDescription>
+              </Alert>
+
+              <Box>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowMnemonicInExitModal(!showMnemonicInExitModal)}
+                  mb={2}
+                >
+                  {showMnemonicInExitModal ? 'Hide' : 'Show'} Mnemonic (Backup)
+                </Button>
+
+                {showMnemonicInExitModal && (
+                  <Alert status="info" flexDir="column" alignItems="flex-start">
+                    <Text fontSize="sm" fontWeight="bold" mb={2}>
+                      Your Recovery Phrase:
+                    </Text>
+                    <Code fontSize="sm" p={3} width="100%" wordBreak="break-word">
+                      {mnemonic}
+                    </Code>
+                    <Text fontSize="xs" color="gray.500" mt={2}>
+                      Save this phrase somewhere safe before exiting!
+                    </Text>
+                  </Alert>
+                )}
+              </Box>
+
+              <Text fontSize="sm" color="gray.500">
+                Are you sure you want to exit? This action cannot be undone.
+              </Text>
+            </VStack>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={onExitModalClose}>
+              Cancel
+            </Button>
+            <Button colorScheme="red" onClick={handleConfirmExit}>
+              Exit and Delete
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </Container>
   );
 }
