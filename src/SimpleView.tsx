@@ -370,6 +370,8 @@ export default function SimpleView({
       onConfirmClose();
       await new Promise((resolve) => setTimeout(resolve, 1200));
       await onRefresh();
+      setDestination('');
+      setAmount('');
     } catch (err) {
       setSendError(err instanceof Error ? err.message : 'Failed to send transaction');
     } finally {
