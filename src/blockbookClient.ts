@@ -139,6 +139,26 @@ export async function fetchTransactions(
   return data as TransactionsResponse;
 }
 
+export async function fetchFeeEstimate(
+  network: NetworkSymbol = 'btc',
+  blocks: number = 2
+): Promise<number> {
+  const response = await fetch(`${API_BASE}/${network}/fee?blocks=${blocks}`, {
+    method: 'GET',
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+    throw new Error(`Failed to fetch fee estimate (${response.status}): ${error.message || error.error}`);
+  }
+
+  const data = await response.json();
+  if (typeof data?.satPerVbyte !== 'number') {
+    throw new Error('Unexpected fee estimate response');
+  }
+  return data.satPerVbyte;
+}
+
 /**
  * Fetches ALL transactions for an xpub by paginating through all pages.
  * Returns a combined response with all transactions.

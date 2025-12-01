@@ -32,6 +32,7 @@ import {
   AlertDescription,
   HStack,
   Badge,
+  FormErrorMessage,
 } from '@chakra-ui/react';
 import { useState } from 'react';
 import { FaLock, FaPlus, FaRandom, FaTrash, FaDownload } from 'react-icons/fa';
@@ -44,12 +45,19 @@ import {
   saveWallet,
   type EncryptedWallet,
 } from './walletStorage';
+import { validateMnemonic } from '@scure/bip39';
+import { wordlist } from '@scure/bip39/wordlists/english';
 
 interface WalletUnlockViewProps {
   onUnlock: (mnemonic: string, walletId?: string, walletName?: string) => void;
 }
 
 export default function WalletUnlockView({ onUnlock }: WalletUnlockViewProps) {
+  const cleanMnemonicForDisplay = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^\p{L}\s]/gu, ' ');
+
   const [mnemonic, setMnemonic] = useState('');
   const [savedWallets, setSavedWallets] = useState<EncryptedWallet[]>(listWallets());
   const [selectedWallet, setSelectedWallet] = useState<EncryptedWallet | null>(null);
@@ -87,12 +95,17 @@ export default function WalletUnlockView({ onUnlock }: WalletUnlockViewProps) {
   const [walletToBackup, setWalletToBackup] = useState<EncryptedWallet | null>(null);
   const [backupPassword, setBackupPassword] = useState('');
   const [decryptedMnemonic, setDecryptedMnemonic] = useState('');
+  const [mnemonicError, setMnemonicError] = useState<string | null>(null);
 
   const toast = useToast();
 
+  const normalizedMnemonic = cleanMnemonicForDisplay(mnemonic).trim().split(/\s+/).join(' ');
+  const isMnemonicValid = normalizedMnemonic ? validateMnemonic(normalizedMnemonic, wordlist) : false;
+
   const handleGenerateRandom = () => {
     const randomMnemonic = createRandomMnemonic();
-    setMnemonic(randomMnemonic);
+    setMnemonic(cleanMnemonicForDisplay(randomMnemonic));
+    setMnemonicError(null);
     toast({
       title: 'Mnemonic generated',
       description: 'A new random mnemonic has been generated',
@@ -112,7 +125,17 @@ export default function WalletUnlockView({ onUnlock }: WalletUnlockViewProps) {
       return;
     }
 
-    onUnlock(mnemonic.trim());
+    if (!isMnemonicValid) {
+      toast({
+        title: 'Invalid mnemonic',
+        description: 'Please enter a valid BIP39 mnemonic phrase',
+        status: 'error',
+        duration: 4000,
+      });
+      return;
+    }
+
+    onUnlock(normalizedMnemonic);
   };
 
   const handleSaveAndEncrypt = () => {
@@ -122,6 +145,16 @@ export default function WalletUnlockView({ onUnlock }: WalletUnlockViewProps) {
         description: 'Please enter or generate a mnemonic first',
         status: 'warning',
         duration: 3000,
+      });
+      return;
+    }
+
+    if (!isMnemonicValid) {
+      toast({
+        title: 'Invalid mnemonic',
+        description: 'Please enter a valid BIP39 mnemonic phrase',
+        status: 'error',
+        duration: 4000,
       });
       return;
     }
@@ -166,7 +199,11 @@ export default function WalletUnlockView({ onUnlock }: WalletUnlockViewProps) {
     setIsProcessing(true);
 
     try {
-      const encrypted = await encryptWallet(mnemonic.trim(), savePassword, walletName.trim());
+      if (!isMnemonicValid) {
+        throw new Error('Mnemonic must be valid before saving');
+      }
+
+      const encrypted = await encryptWallet(normalizedMnemonic, savePassword, walletName.trim());
       saveWallet(encrypted);
       setSavedWallets(listWallets());
 
@@ -179,7 +216,7 @@ export default function WalletUnlockView({ onUnlock }: WalletUnlockViewProps) {
 
       onSaveClose();
       // Auto-unlock after saving
-      onUnlock(mnemonic.trim(), encrypted.id, encrypted.name);
+      onUnlock(normalizedMnemonic, encrypted.id, encrypted.name);
     } catch (error) {
       toast({
         title: 'Failed to save wallet',
@@ -312,15 +349,25 @@ export default function WalletUnlockView({ onUnlock }: WalletUnlockViewProps) {
           </Heading>
 
           <Stack spacing={4}>
-            <FormControl>
+            <FormControl isInvalid={!!mnemonicError}>
               <FormLabel>BIP39 Mnemonic Phrase</FormLabel>
               <Textarea
                 value={mnemonic}
-                onChange={(e) => setMnemonic(e.target.value)}
+                onChange={(e) => {
+                  const cleanedDisplay = cleanMnemonicForDisplay(e.target.value);
+                  setMnemonic(cleanedDisplay);
+                  const cleanedNormalized = cleanedDisplay.trim().split(/\s+/).join(' ');
+                  if (!cleanedNormalized) {
+                    setMnemonicError(null);
+                    return;
+                  }
+                  setMnemonicError(validateMnemonic(cleanedNormalized, wordlist) ? null : 'Invalid mnemonic phrase');
+                }}
                 placeholder="Enter your 12 or 24 word mnemonic phrase, or generate a new one"
                 rows={3}
                 fontFamily="monospace"
               />
+              {mnemonicError && <FormErrorMessage>{mnemonicError}</FormErrorMessage>}
             </FormControl>
 
             <Flex gap={3} flexWrap="wrap">
@@ -333,11 +380,16 @@ export default function WalletUnlockView({ onUnlock }: WalletUnlockViewProps) {
                 Generate Random
               </Button>
 
-              <Button onClick={handleUseTemporary} colorScheme="blue" variant="outline">
+              <Button onClick={handleUseTemporary} colorScheme="blue" variant="outline" isDisabled={!normalizedMnemonic || !!mnemonicError}>
                 Use Temporary (In-Memory)
               </Button>
 
-              <Button leftIcon={<FaLock />} onClick={handleSaveAndEncrypt} colorScheme="green">
+              <Button
+                leftIcon={<FaLock />}
+                onClick={handleSaveAndEncrypt}
+                colorScheme="green"
+                isDisabled={!normalizedMnemonic || !!mnemonicError}
+              >
                 Save & Encrypt
               </Button>
             </Flex>

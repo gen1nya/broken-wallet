@@ -190,4 +190,62 @@ export class NowNodesService {
       throw error;
     }
   }
+
+  /**
+   * Estimate fee rate for a target confirmation window (blocks)
+   * Returns sat/vB
+   */
+  async estimateFee(
+    network: NetworkSymbol,
+    blocks: number = 2,
+  ): Promise<number> {
+    const networkConfig = getNetwork(network);
+    const url = `${networkConfig.blockbookUrl}/api/v2/estimatefee/${blocks}`;
+
+    try {
+      const response = await axios.get(url, {
+        headers: {
+          'api-key': this.apiKey,
+        },
+        timeout: 10000,
+      });
+
+      const value = response.data;
+
+      // Blockbook can return bare number/string or wrapped in an object (e.g. { result: "0.0001" })
+      const candidates: Array<unknown> = [value];
+      if (value && typeof value === 'object') {
+        candidates.push((value as any).result);
+        candidates.push((value as any).feePerKb);
+        candidates.push((value as any).feePerKB);
+        candidates.push((value as any).fee);
+      }
+
+      const numeric = candidates
+        .map((v) => (typeof v === 'string' ? Number(v) : v))
+        .find((v) => typeof v === 'number' && Number.isFinite(v));
+
+      if (numeric === undefined) {
+        throw new Error('Unexpected fee estimate response');
+      }
+
+      // Convert BTC/kB to sat/vbyte
+      const feeBtcPerKb = numeric;
+
+      // Some nodes return 0 or -1 on failure; guard against that.
+      if (feeBtcPerKb <= 0) {
+        throw new Error('Fee estimate unavailable');
+      }
+
+      const satPerByte = (feeBtcPerKb * 1e8) / 1000;
+      return Math.max(1, Math.ceil(satPerByte));
+    } catch (error) {
+      if (error instanceof AxiosError) {
+        const status = error.response?.status || 500;
+        const message = error.response?.data?.error || error.message;
+        throw new Error(`Failed to estimate fee (${status}): ${message}`);
+      }
+      throw error;
+    }
+  }
 }

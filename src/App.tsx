@@ -54,6 +54,7 @@ import { useNetwork } from './NetworkContext';
 import NetworkSwitcher from './NetworkSwitcher';
 import WalletUnlockView from './WalletUnlockView';
 import QRCodePopover from './QRCodePopover';
+import SimpleView from './SimpleView';
 
 function ColorModeToggle() {
   const { colorMode, toggleColorMode } = useColorMode();
@@ -417,10 +418,11 @@ function App() {
         </HStack>
       </Flex>
 
-      <Tabs variant="enclosed" colorScheme="purple">
+      <Tabs variant="enclosed" colorScheme="purple" defaultIndex={2}>
         <TabList>
           <Tab>Wallet</Tab>
           <Tab>Transaction builder</Tab>
+          <Tab>Easy mode</Tab>
         </TabList>
 
         <TabPanels>
@@ -545,6 +547,20 @@ function App() {
 
           <TabPanel px={0}>
             <TransactionBuilderView mnemonic={mnemonic} utxos={utxos} addresses={allAddresses} />
+          </TabPanel>
+
+          <TabPanel px={0}>
+            <SimpleView
+              mnemonic={mnemonic}
+              utxos={utxos}
+              transactions={transactions}
+              addressMap={addressMap}
+              segwitAddresses={segwitAddresses}
+              legacyAddresses={legacyAddresses}
+              walletBalance={walletBalance}
+              onTransactionClick={handleTransactionClick}
+              onRefresh={handleRefresh}
+            />
           </TabPanel>
         </TabPanels>
       </Tabs>
