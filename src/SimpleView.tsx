@@ -507,7 +507,6 @@ export default function SimpleView({
                       Use suggested
                     </Button>
                   </HStack>
-                  <Text fontSize="sm" color="gray.500" mt={1}>Commission per byte.</Text>
                 </Box>
               </Stack>
               {fetchingHex && (
