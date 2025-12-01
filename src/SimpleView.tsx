@@ -121,6 +121,22 @@ const simplifyTransaction = (
 const estimateInputWeight = (type: 'p2wpkh' | 'p2pkh') => (type === 'p2wpkh' ? 68 : 148);
 const estimateOutputWeight = (type: 'p2wpkh' | 'p2pkh') => (type === 'p2wpkh' ? 31 : 34);
 
+const getBlockExplorerUrl = (network: NetworkSymbol, txid: string): string => {
+  const map: Record<NetworkSymbol, string> = {
+    btc: 'bitcoin',
+    ltc: 'litecoin',
+    doge: 'dogecoin',
+    dash: 'dash',
+  };
+  const chain = map[network] ?? 'bitcoin';
+  return `https://blockchair.com/${chain}/transaction/${txid}`;
+};
+
+const formatTxidShort = (txid: string) => {
+  if (txid.length <= 16) return txid;
+  return `${txid.slice(0, 8)}…${txid.slice(-8)}`;
+};
+
 const estimateFee = (
   utxos: BlockbookUtxo[],
   outputTypes: ('p2wpkh' | 'p2pkh')[],
@@ -352,6 +368,7 @@ export default function SimpleView({
       const txid = await broadcastTransaction(pendingTx.hex, network);
       setLastTxId(txid);
       onConfirmClose();
+      await new Promise((resolve) => setTimeout(resolve, 1200));
       await onRefresh();
     } catch (err) {
       setSendError(err instanceof Error ? err.message : 'Failed to send transaction');
@@ -467,9 +484,20 @@ export default function SimpleView({
                 </Alert>
               )}
               {lastTxId && (
-                <Alert status="success" borderRadius="md">
-                  <AlertIcon />
-                  <AlertDescription>Broadcasted: {lastTxId}</AlertDescription>
+                <Alert status="success" borderRadius="md" flexDir="column" alignItems="flex-start" gap={2}>
+                  <HStack alignItems="flex-start">
+                    <AlertIcon />
+                    <AlertDescription>Broadcasted: {formatTxidShort(lastTxId)}</AlertDescription>
+                  </HStack>
+                  <Button
+                    size="sm"
+                    colorScheme="blue"
+                    variant="outline"
+                    alignSelf="flex-start"
+                    onClick={() => window.open(getBlockExplorerUrl(network, lastTxId), '_blank')}
+                  >
+                    View in explorer
+                  </Button>
                 </Alert>
               )}
               <Spacer />
