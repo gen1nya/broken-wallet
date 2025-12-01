@@ -551,6 +551,7 @@ function App() {
 
           <TabPanel px={0}>
             <SimpleView
+              key={currentWalletId ?? mnemonic}
               mnemonic={mnemonic}
               utxos={utxos}
               transactions={transactions}
