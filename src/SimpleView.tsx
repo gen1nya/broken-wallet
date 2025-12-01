@@ -340,7 +340,6 @@ export default function SimpleView({
               <Heading size="md">Receive</Heading>
               {receiveAddress ? (
                 <>
-                  <Text color="gray.500">First clean receive address (Segwit preferred).</Text>
                   <Flex justify="center">
                     <Box
                       borderWidth="1px"
@@ -387,6 +386,7 @@ export default function SimpleView({
                 <NumberInput value={feeRate} min={1} onChange={(value) => setFeeRate(Number(value) || 1)}>
                   <NumberInputField placeholder="Fee rate (sat/vB)" />
                 </NumberInput>
+                <Text fontSize="sm" color="gray.500">Commission per byte (sat/vB).</Text>
               </Stack>
               {fetchingHex && (
                 <Box>
