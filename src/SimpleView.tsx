@@ -21,6 +21,14 @@ import {
   VStack,
   Divider,
   Spacer,
+  useDisclosure,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalCloseButton,
+  ModalBody,
+  ModalFooter,
 } from '@chakra-ui/react';
 import { useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -29,7 +37,7 @@ import { BlockbookTransaction, BlockbookUtxo, NetworkSymbol, broadcastTransactio
 import { DerivedAddress } from './bitcoin';
 import { isOwnAddress } from './addressDiscovery';
 import { useNetwork } from './NetworkContext';
-import { buildSignedTransaction, detectAddressType } from './transactionBuilder';
+import { TxBuildResult, buildSignedTransaction, detectAddressType } from './transactionBuilder';
 import { findFirstCleanReceiveAddress } from './simpleMode';
 
 interface SimpleViewProps {
@@ -148,11 +156,16 @@ export default function SimpleView({
   const [amount, setAmount] = useState('');
   const [feeRate, setFeeRate] = useState(5);
   const [sending, setSending] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [lastTxId, setLastTxId] = useState<string | null>(null);
+  const [pendingTx, setPendingTx] = useState<TxBuildResult | null>(null);
+  const [pendingAmount, setPendingAmount] = useState<bigint | null>(null);
+  const [pendingDestination, setPendingDestination] = useState<string | null>(null);
   const [hexCache, setHexCache] = useState<Record<string, string>>({});
   const [fetchingHex, setFetchingHex] = useState(false);
   const [hexProgress, setHexProgress] = useState({ current: 0, total: 0 });
+  const { isOpen: isConfirmOpen, onOpen: onConfirmOpen, onClose: onConfirmClose } = useDisclosure();
 
   const receiveAddress = useMemo(
     () => findFirstCleanReceiveAddress(segwitAddresses, legacyAddresses, transactions, addressMap),
@@ -228,6 +241,9 @@ export default function SimpleView({
   const handleSend = async () => {
     setSendError(null);
     setLastTxId(null);
+    setPendingTx(null);
+    setPendingAmount(null);
+    setPendingDestination(null);
 
     if (!destination.trim() || !amount.trim()) {
       setSendError('Enter destination and amount');
@@ -264,6 +280,8 @@ export default function SimpleView({
     }
 
     setSending(true);
+    let builtTx: TxBuildResult | null = null;
+
     try {
       const selection = pickUtxos(amountSats, destType, changeType);
       const outputs = [{ address: destination.trim(), amountSats }];
@@ -279,9 +297,8 @@ export default function SimpleView({
           feeRate,
           network,
         );
-
-        const txid = await broadcastTransaction(tx.hex, network);
-        setLastTxId(txid);
+        builtTx = tx;
+        setPendingTx(tx);
       };
 
       try {
@@ -294,13 +311,43 @@ export default function SimpleView({
         }
       }
 
-      await onRefresh();
+      if (!builtTx) {
+        throw new Error('Failed to prepare transaction');
+      }
+
+      setPendingAmount(amountSats);
+      setPendingDestination(destination.trim());
+      onConfirmOpen();
     } catch (err) {
       setSendError(err instanceof Error ? err.message : 'Failed to send transaction');
     } finally {
       setSending(false);
       setFetchingHex(false);
     }
+  };
+
+  const handleConfirmSend = async () => {
+    if (!pendingTx) return;
+
+    setConfirming(true);
+    setSendError(null);
+    try {
+      const txid = await broadcastTransaction(pendingTx.hex, network);
+      setLastTxId(txid);
+      onConfirmClose();
+      await onRefresh();
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : 'Failed to send transaction');
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const handleCloseConfirm = () => {
+    onConfirmClose();
+    setPendingTx(null);
+    setPendingAmount(null);
+    setPendingDestination(null);
   };
 
   return (
@@ -383,10 +430,10 @@ export default function SimpleView({
               <Stack spacing={3}>
                 <Input placeholder="Destination address" value={destination} onChange={(e) => setDestination(e.target.value)} />
                 <Input placeholder={`Amount (${networkInfo.ticker})`} value={amount} onChange={(e) => setAmount(e.target.value)} />
+                <Text fontSize="sm" color="gray.500">Commission per byte (sat/vB).</Text>
                 <NumberInput value={feeRate} min={1} onChange={(value) => setFeeRate(Number(value) || 1)}>
                   <NumberInputField placeholder="Fee rate (sat/vB)" />
                 </NumberInput>
-                <Text fontSize="sm" color="gray.500">Commission per byte (sat/vB).</Text>
               </Stack>
               {fetchingHex && (
                 <Box>
@@ -478,6 +525,58 @@ export default function SimpleView({
           </Stack>
         </Stack>
       </Box>
+
+      <Modal isOpen={isConfirmOpen} onClose={handleCloseConfirm} isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Confirm send</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Stack spacing={3}>
+              <Box>
+                <Text fontSize="xs" color="gray.500">Destination</Text>
+                <Text fontFamily="mono" wordBreak="break-all">{pendingDestination ?? '—'}</Text>
+              </Box>
+              <Box>
+                <Text fontSize="xs" color="gray.500">Amount</Text>
+                <Text fontWeight="semibold">
+                  {pendingAmount !== null ? formatCrypto(pendingAmount, networkInfo.ticker) : '—'}
+                </Text>
+              </Box>
+              <Box>
+                <Text fontSize="xs" color="gray.500">Fee rate</Text>
+                <Text>{feeRate} sat/vB</Text>
+              </Box>
+              <Box>
+                <Text fontSize="xs" color="gray.500">Network fee</Text>
+                <Text fontWeight="semibold">
+                  {pendingTx ? formatCrypto(pendingTx.feeSats, networkInfo.ticker) : '—'}
+                </Text>
+              </Box>
+              <Box>
+                <Text fontSize="xs" color="gray.500">Total cost</Text>
+                <Text fontWeight="bold">
+                  {pendingTx && pendingAmount !== null
+                    ? formatCrypto(pendingAmount + pendingTx.feeSats, networkInfo.ticker)
+                    : '—'}
+                </Text>
+              </Box>
+              <Alert status="warning" borderRadius="md">
+                <AlertIcon />
+                <AlertDescription>Review before broadcasting. Transaction will be sent via backend.</AlertDescription>
+              </Alert>
+            </Stack>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={handleCloseConfirm}>
+              Cancel
+            </Button>
+            <Button colorScheme="purple" onClick={handleConfirmSend} isLoading={confirming} isDisabled={!pendingTx}>
+              Broadcast
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </Stack>
   );
 }
