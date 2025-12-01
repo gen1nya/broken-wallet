@@ -223,7 +223,7 @@ export class NowNodesService {
 
       const numeric = candidates
         .map((v) => (typeof v === 'string' ? Number(v) : v))
-        .find((v) => typeof v === 'number' && Number.isFinite(v));
+        .find((v): v is number => typeof v === 'number' && Number.isFinite(v));
 
       if (numeric === undefined) {
         throw new Error('Unexpected fee estimate response');
