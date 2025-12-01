@@ -185,6 +185,7 @@ export default function SimpleView({
   const [hexProgress, setHexProgress] = useState({ current: 0, total: 0 });
   const [loadingFee, setLoadingFee] = useState(false);
   const { isOpen: isConfirmOpen, onOpen: onConfirmOpen, onClose: onConfirmClose } = useDisclosure();
+  const numericPattern = /^\d*(?:[.,]\d*)?$/;
 
   useEffect(() => {
     setDestination('');
@@ -196,6 +197,11 @@ export default function SimpleView({
     setPendingDestination(null);
     setFeeRate(5);
   }, [mnemonic]);
+
+  useEffect(() => {
+    setDestination('');
+    setAmount('');
+  }, [network]);
 
   useEffect(() => {
     handleFillFee();
@@ -271,6 +277,19 @@ export default function SimpleView({
     }
 
     return selection;
+  };
+
+  const handleDestinationChange = (value: string) => {
+    setDestination(value);
+    setSendError(null);
+  };
+
+  const handleAmountChange = (value: string) => {
+    const normalized = value.replace(/,/g, '.');
+    if (normalized === '' || numericPattern.test(normalized)) {
+      setAmount(normalized);
+      setSendError(null);
+    }
   };
 
   const handleSend = async () => {
@@ -495,8 +514,14 @@ export default function SimpleView({
             <Stack spacing={4} flex="1">
               <Heading size="md">Send</Heading>
               <Stack spacing={3}>
-                <Input placeholder="Destination address" value={destination} onChange={(e) => setDestination(e.target.value)} />
-                <Input placeholder={`Amount (${networkInfo.ticker})`} value={amount} onChange={(e) => setAmount(e.target.value)} />
+                <Input placeholder="Destination address" value={destination} onChange={(e) => handleDestinationChange(e.target.value)} />
+                <Input
+                  placeholder={`Amount (${networkInfo.ticker})`}
+                  value={amount}
+                  onChange={(e) => handleAmountChange(e.target.value)}
+                  inputMode="decimal"
+                  pattern="^[0-9]*[.,]?[0-9]*$"
+                />
                 <Box>
                   <Text fontSize="xs" color="gray.500" mb={1}>Fee rate (sat/vB)</Text>
                   <HStack align="flex-end">
@@ -652,10 +677,10 @@ export default function SimpleView({
                 <AlertIcon />
                 <AlertDescription>Review before broadcasting. Transaction will be sent via backend.</AlertDescription>
               </Alert>
-              <Box>
+             {/* <Box>
                 <Text fontSize="xs" color="gray.500">Raw hex (temporary for debug)</Text>
                 <Textarea value={pendingTx?.hex ?? ''} readOnly fontFamily="mono" rows={4} />
-              </Box>
+              </Box>*/}
             </Stack>
           </ModalBody>
           <ModalFooter>
