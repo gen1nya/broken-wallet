@@ -29,6 +29,7 @@ import {
   ModalCloseButton,
   ModalBody,
   ModalFooter,
+  Textarea,
 } from '@chakra-ui/react';
 import { useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -315,6 +316,22 @@ export default function SimpleView({
         throw new Error('Failed to prepare transaction');
       }
 
+      const requiredFee = BigInt(Math.ceil(builtTx.vsize * feeRate));
+      if (builtTx.feeSats < requiredFee) {
+        const bump = Math.max(1, Math.ceil(Number(requiredFee - builtTx.feeSats) / builtTx.vsize));
+        const bumpedTx = await buildSignedTransaction(
+          mnemonic,
+          await prepareUtxosWithHex(selection.length ? selection : utxos),
+          outputs,
+          addressMap,
+          changeAddress,
+          feeRate + bump,
+          network,
+        );
+        builtTx = bumpedTx;
+        setPendingTx(bumpedTx);
+      }
+
       setPendingAmount(amountSats);
       setPendingDestination(destination.trim());
       onConfirmOpen();
@@ -565,6 +582,10 @@ export default function SimpleView({
                 <AlertIcon />
                 <AlertDescription>Review before broadcasting. Transaction will be sent via backend.</AlertDescription>
               </Alert>
+              <Box>
+                <Text fontSize="xs" color="gray.500">Raw hex (temporary for debug)</Text>
+                <Textarea value={pendingTx?.hex ?? ''} readOnly fontFamily="mono" rows={4} />
+              </Box>
             </Stack>
           </ModalBody>
           <ModalFooter>
