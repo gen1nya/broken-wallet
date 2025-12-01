@@ -549,7 +549,9 @@ export default function SimpleView({
                 >
                   <Flex justify="space-between" align="center" wrap="wrap" gap={2}>
                     <HStack spacing={2}>
-                      <Badge colorScheme={statusColor}>{status}</Badge>
+                      {(status === 'pending' || status === 'confirming') && (
+                        <Badge colorScheme={statusColor}>{status}</Badge>
+                      )}
                       <Badge colorScheme={direction === 'received' ? 'green' : direction === 'sent' ? 'red' : 'gray'}>
                         {direction}
                       </Badge>
