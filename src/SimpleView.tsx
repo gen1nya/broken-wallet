@@ -31,7 +31,7 @@ import {
   ModalFooter,
   Textarea,
 } from '@chakra-ui/react';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { FaArrowDown, FaArrowUp, FaClock, FaHistory, FaPaperPlane } from 'react-icons/fa';
 import { BlockbookTransaction, BlockbookUtxo, NetworkSymbol, broadcastTransaction, getRawTransaction } from './blockbookClient';
@@ -183,6 +183,16 @@ export default function SimpleView({
   const [fetchingHex, setFetchingHex] = useState(false);
   const [hexProgress, setHexProgress] = useState({ current: 0, total: 0 });
   const { isOpen: isConfirmOpen, onOpen: onConfirmOpen, onClose: onConfirmClose } = useDisclosure();
+
+  useEffect(() => {
+    setDestination('');
+    setAmount('');
+    setSendError(null);
+    setLastTxId(null);
+    setPendingTx(null);
+    setPendingAmount(null);
+    setPendingDestination(null);
+  }, [mnemonic]);
 
   const receiveAddress = useMemo(
     () => findFirstCleanReceiveAddress(segwitAddresses, legacyAddresses, transactions, addressMap),
