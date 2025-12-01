@@ -20,6 +20,7 @@ import {
   useColorModeValue,
   VStack,
   Divider,
+  Spacer,
 } from '@chakra-ui/react';
 import { useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -304,25 +305,60 @@ export default function SimpleView({
 
   return (
     <Stack spacing={6}>
-      <Grid templateColumns={{ base: '1fr', md: 'repeat(2, minmax(0, 1fr))' }} gap={4}>
+      <Box
+        p={6}
+        rounded="lg"
+        bg={useColorModeValue('purple.50', 'gray.700')}
+        borderWidth="1px"
+        borderColor={borderColor}
+        shadow="md"
+      >
+        <Stack spacing={2}>
+          <Text fontSize="sm" color="gray.600" textTransform="uppercase" letterSpacing="widest">
+            Balance
+          </Text>
+          <Heading size="lg" color={useColorModeValue('purple.700', 'purple.200')}>
+            {formatCrypto(walletBalance, networkInfo.ticker)}
+          </Heading>
+        </Stack>
+      </Box>
+
+      <Grid templateColumns={{ base: '1fr', md: 'repeat(2, minmax(0, 1fr))' }} gap={4} alignItems="stretch">
         <GridItem>
-          <Box p={6} rounded="lg" bg={panelBg} shadow="md" borderWidth="1px" borderColor={borderColor}>
-            <Stack spacing={4}>
-              <Heading size="md">Receive (simple)</Heading>
+          <Box
+            p={6}
+            rounded="lg"
+            bg={panelBg}
+            shadow="md"
+            borderWidth="1px"
+            borderColor={borderColor}
+            h="100%"
+            display="flex"
+            flexDirection="column"
+          >
+            <Stack spacing={4} flex="1">
+              <Heading size="md">Receive</Heading>
               {receiveAddress ? (
                 <>
                   <Text color="gray.500">First clean receive address (Segwit preferred).</Text>
-                  <Box borderWidth="1px" borderColor={borderColor} borderRadius="md" p={4} textAlign="center" bg="white">
-                    <QRCodeSVG value={receiveAddress.address} size={160} />
-                  </Box>
+                  <Flex justify="center">
+                    <Box
+                      borderWidth="1px"
+                      borderColor={borderColor}
+                      borderRadius="md"
+                      p={4}
+                      bg="white"
+                      display="inline-flex"
+                      justifyContent="center"
+                      alignItems="center"
+                    >
+                      <QRCodeSVG value={receiveAddress.address} size={170} />
+                    </Box>
+                  </Flex>
                   <VStack align="stretch" spacing={1}>
                     <Text fontSize="xs" color="gray.500">Address</Text>
                     <Text fontFamily="mono" wordBreak="break-all">{receiveAddress.address}</Text>
-                    <Text fontSize="xs" color="gray.500">Path: {receiveAddress.path}</Text>
                   </VStack>
-                  <Badge alignSelf="flex-start" colorScheme={receiveAddress.format === 'p2wpkh' ? 'green' : 'orange'}>
-                    {receiveAddress.format === 'p2wpkh' ? 'Segwit' : 'Legacy'}
-                  </Badge>
                 </>
               ) : (
                 <Text color="gray.500">No address available.</Text>
@@ -332,10 +368,19 @@ export default function SimpleView({
         </GridItem>
 
         <GridItem>
-          <Box p={6} rounded="lg" bg={panelBg} shadow="md" borderWidth="1px" borderColor={borderColor}>
-            <Stack spacing={4}>
+          <Box
+            p={6}
+            rounded="lg"
+            bg={panelBg}
+            shadow="md"
+            borderWidth="1px"
+            borderColor={borderColor}
+            h="100%"
+            display="flex"
+            flexDirection="column"
+          >
+            <Stack spacing={4} flex="1">
               <Heading size="md">Send</Heading>
-              <Text fontSize="sm" color="gray.500">Balance: {formatCrypto(walletBalance, networkInfo.ticker)}</Text>
               <Stack spacing={3}>
                 <Input placeholder="Destination address" value={destination} onChange={(e) => setDestination(e.target.value)} />
                 <Input placeholder={`Amount (${networkInfo.ticker})`} value={amount} onChange={(e) => setAmount(e.target.value)} />
@@ -363,10 +408,17 @@ export default function SimpleView({
                   <AlertDescription>Broadcasted: {lastTxId}</AlertDescription>
                 </Alert>
               )}
-              <Button colorScheme="purple" leftIcon={<Icon as={FaPaperPlane} />} onClick={handleSend} isLoading={sending}>
-                Send
-              </Button>
+              <Spacer />
             </Stack>
+            <Button
+              colorScheme="purple"
+              leftIcon={<Icon as={FaPaperPlane} />}
+              onClick={handleSend}
+              isLoading={sending}
+              mt={4}
+            >
+              Send
+            </Button>
           </Box>
         </GridItem>
       </Grid>
