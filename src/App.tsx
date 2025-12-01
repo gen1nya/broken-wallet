@@ -418,11 +418,11 @@ function App() {
         </HStack>
       </Flex>
 
-      <Tabs variant="enclosed" colorScheme="purple">
+      <Tabs variant="enclosed" colorScheme="purple" defaultIndex={2}>
         <TabList>
           <Tab>Wallet</Tab>
           <Tab>Transaction builder</Tab>
-          <Tab>simple</Tab>
+          <Tab>Easy mode</Tab>
         </TabList>
 
         <TabPanels>
