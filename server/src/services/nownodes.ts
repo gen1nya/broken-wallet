@@ -212,10 +212,29 @@ export class NowNodesService {
 
       const value = response.data;
 
-      // Blockbook returns BTC/KB as number or string. Convert to sat/vbyte.
-      const feeBtcPerKb = typeof value === 'string' ? Number(value) : value;
-      if (!Number.isFinite(feeBtcPerKb)) {
+      // Blockbook can return bare number/string or wrapped in an object (e.g. { result: "0.0001" })
+      const candidates: Array<unknown> = [value];
+      if (value && typeof value === 'object') {
+        candidates.push((value as any).result);
+        candidates.push((value as any).feePerKb);
+        candidates.push((value as any).feePerKB);
+        candidates.push((value as any).fee);
+      }
+
+      const numeric = candidates
+        .map((v) => (typeof v === 'string' ? Number(v) : v))
+        .find((v) => typeof v === 'number' && Number.isFinite(v));
+
+      if (numeric === undefined) {
         throw new Error('Unexpected fee estimate response');
+      }
+
+      // Convert BTC/kB to sat/vbyte
+      const feeBtcPerKb = numeric;
+
+      // Some nodes return 0 or -1 on failure; guard against that.
+      if (feeBtcPerKb <= 0) {
+        throw new Error('Fee estimate unavailable');
       }
 
       const satPerByte = (feeBtcPerKb * 1e8) / 1000;
