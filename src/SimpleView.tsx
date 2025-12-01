@@ -194,7 +194,13 @@ export default function SimpleView({
     setPendingTx(null);
     setPendingAmount(null);
     setPendingDestination(null);
+    setFeeRate(5);
   }, [mnemonic]);
+
+  useEffect(() => {
+    handleFillFee();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [network]);
 
   const receiveAddress = useMemo(
     () => findFirstCleanReceiveAddress(segwitAddresses, legacyAddresses, transactions, addressMap),
@@ -491,13 +497,18 @@ export default function SimpleView({
               <Stack spacing={3}>
                 <Input placeholder="Destination address" value={destination} onChange={(e) => setDestination(e.target.value)} />
                 <Input placeholder={`Amount (${networkInfo.ticker})`} value={amount} onChange={(e) => setAmount(e.target.value)} />
-                <NumberInput value={feeRate} min={1} onChange={(value) => setFeeRate(Number(value) || 1)}>
-                  <NumberInputField placeholder="Fee rate (sat/vB)" />
-                </NumberInput>
-                <Button size="sm" variant="ghost" onClick={handleFillFee} isLoading={loadingFee} alignSelf="flex-start">
-                  Use suggested fee
-                </Button>
-                <Text fontSize="sm" color="gray.500">Commission per byte (sat/vB).</Text>
+                <Box>
+                  <Text fontSize="xs" color="gray.500" mb={1}>Fee rate (sat/vB)</Text>
+                  <HStack align="flex-end">
+                    <NumberInput value={feeRate} min={1} onChange={(value) => setFeeRate(Number(value) || 1)} flex={1}>
+                      <NumberInputField placeholder="Fee rate" />
+                    </NumberInput>
+                    <Button size="sm" variant="ghost" onClick={handleFillFee} isLoading={loadingFee}>
+                      Use suggested
+                    </Button>
+                  </HStack>
+                  <Text fontSize="sm" color="gray.500" mt={1}>Commission per byte.</Text>
+                </Box>
               </Stack>
               {fetchingHex && (
                 <Box>
