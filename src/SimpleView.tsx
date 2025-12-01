@@ -39,6 +39,7 @@ import { DerivedAddress } from './bitcoin';
 import { isOwnAddress } from './addressDiscovery';
 import { useNetwork } from './NetworkContext';
 import { TxBuildResult, buildSignedTransaction, detectAddressType } from './transactionBuilder';
+import { fetchFeeEstimate } from './blockbookClient';
 import { findFirstCleanReceiveAddress } from './simpleMode';
 
 interface SimpleViewProps {
@@ -182,6 +183,7 @@ export default function SimpleView({
   const [hexCache, setHexCache] = useState<Record<string, string>>({});
   const [fetchingHex, setFetchingHex] = useState(false);
   const [hexProgress, setHexProgress] = useState({ current: 0, total: 0 });
+  const [loadingFee, setLoadingFee] = useState(false);
   const { isOpen: isConfirmOpen, onOpen: onConfirmOpen, onClose: onConfirmClose } = useDisclosure();
 
   useEffect(() => {
@@ -389,6 +391,19 @@ export default function SimpleView({
     }
   };
 
+  const handleFillFee = async () => {
+    setLoadingFee(true);
+    setSendError(null);
+    try {
+      const estimate = await fetchFeeEstimate(network, 2);
+      setFeeRate(estimate);
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : 'Failed to fetch fee');
+    } finally {
+      setLoadingFee(false);
+    }
+  };
+
   const handleCloseConfirm = () => {
     onConfirmClose();
     setPendingTx(null);
@@ -476,10 +491,13 @@ export default function SimpleView({
               <Stack spacing={3}>
                 <Input placeholder="Destination address" value={destination} onChange={(e) => setDestination(e.target.value)} />
                 <Input placeholder={`Amount (${networkInfo.ticker})`} value={amount} onChange={(e) => setAmount(e.target.value)} />
-                <Text fontSize="sm" color="gray.500">Commission per byte (sat/vB).</Text>
                 <NumberInput value={feeRate} min={1} onChange={(value) => setFeeRate(Number(value) || 1)}>
                   <NumberInputField placeholder="Fee rate (sat/vB)" />
                 </NumberInput>
+                <Button size="sm" variant="ghost" onClick={handleFillFee} isLoading={loadingFee} alignSelf="flex-start">
+                  Use suggested fee
+                </Button>
+                <Text fontSize="sm" color="gray.500">Commission per byte (sat/vB).</Text>
               </Stack>
               {fetchingHex && (
                 <Box>

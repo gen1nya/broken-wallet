@@ -77,6 +77,34 @@ router.post('/:network/utxo', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/:network/fee
+ * Estimate fee rate (sat/vB) for target confirmation blocks
+ * Query: blocks (default 2)
+ */
+router.get('/:network/fee', async (req: Request, res: Response) => {
+  try {
+    const { network } = req.params;
+    const blocks = Number(req.query.blocks) || 2;
+
+    if (!isSupportedNetwork(network)) {
+      return res.status(400).json({
+        error: 'Invalid network',
+        message: `Network '${network}' is not supported`,
+      });
+    }
+
+    const satPerVbyte = await getNowNodesService().estimateFee(network as NetworkSymbol, blocks);
+    res.json({ satPerVbyte });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Failed to estimate fee',
+      message,
+    });
+  }
+});
+
+/**
  * POST /api/:network/broadcast
  * Broadcast a signed transaction
  *
