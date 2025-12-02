@@ -55,6 +55,7 @@ import NetworkSwitcher from './NetworkSwitcher';
 import WalletUnlockView from './WalletUnlockView';
 import QRCodePopover from './QRCodePopover';
 import SimpleView from './SimpleView';
+import PasswordManagerView from './PasswordManagerView';
 
 function ColorModeToggle() {
   const { colorMode, toggleColorMode } = useColorMode();
@@ -423,6 +424,7 @@ function App() {
           <Tab>Wallet</Tab>
           <Tab>Transaction builder</Tab>
           <Tab>Easy mode</Tab>
+          <Tab>Password Manager</Tab>
         </TabList>
 
         <TabPanels>
@@ -561,6 +563,10 @@ function App() {
               onTransactionClick={handleTransactionClick}
               onRefresh={handleRefresh}
             />
+          </TabPanel>
+
+          <TabPanel px={0}>
+            <PasswordManagerView mnemonic={mnemonic} walletId={currentWalletId} />
           </TabPanel>
         </TabPanels>
       </Tabs>

@@ -2,13 +2,26 @@
 
 Experimental web-based wallet playground built with React, Vite, TypeScript, and Chakra UI. Demonstrates Bitcoin key management, address derivation (BIP84 native segwit), UTXO tracking, and transaction building/signing without rolling custom cryptography.
 
-Features:
-- ✅ BIP84 native segwit Bitcoin wallet (P2WPKH)
-- ✅ Transaction builder with UTXO selection and fee estimation
-- ✅ Secure backend API proxy for NowNodes Blockbook
-- ✅ Multi-currency support ready (BTC, DOGE, LTC, DASH)
-- 🔨 Support for legacy P2PKH addresses (in progress)
-- 🔨 Encrypted local storage with WebAuthn/Passkey (in progress)
+## Features
+
+### Bitcoin Wallet
+- ✅ BIP84 native segwit (P2WPKH) and legacy P2PKH support
+- ✅ Multi-currency support (BTC, DOGE, LTC, DASH)
+- ✅ UTXO tracking and transaction history
+- ✅ Transaction builder with coin control and fee estimation
+- ✅ Encrypted wallet storage (AES-256-GCM + PBKDF2)
+
+### Password Manager
+- ✅ Deterministic password generation from mnemonic
+- ✅ BIP32 key derivation (m/128'/0'/{index})
+- ✅ Password rotation with nonce/version support
+- ✅ Import/export login entries to JSON
+- ✅ No passwords stored - regenerated on demand
+
+### Backend API
+- ✅ Secure proxy for NowNodes Blockbook
+- ✅ API key protection and rate limiting
+- ✅ CORS configuration for production
 
 ## Project Structure
 

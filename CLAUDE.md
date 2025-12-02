@@ -106,6 +106,56 @@ Storage structure:
 }
 ```
 
+### Password Manager (src/passwordDerivation.ts, src/passwordStorage.ts)
+
+**passwordDerivation.ts** - Deterministic password generation:
+- Uses non-standard BIP32 derivation path `m/128'/0'/{index}` (outside cryptocurrency range)
+- Hashes login string with nonce: `SHA-256(login + ":" + nonce)`
+- First 4 bytes of hash → derivation index
+- Remaining bytes → salt for key mixing
+- Final password: base58-encoded SHA-256(privateKey || salt)
+- Default password length: 32 characters
+
+Key function: `derivePasswordFromLogin(login, hdRoot, nonce, length)`
+
+**passwordStorage.ts** - Login entry storage:
+- Stores login metadata (login, service, notes, nonce) in localStorage
+- **Passwords never stored** - regenerated on-demand from mnemonic
+- Nonce field enables password rotation without changing login
+- Import/export to JSON for backup
+- Per-wallet storage (keyed by walletId)
+
+Storage structure:
+```typescript
+{
+  version: 1,
+  wallets: {
+    "wallet-id": {
+      logins: [
+        {
+          id: "uuid",
+          login: "user@example.com",
+          service: "Gmail",
+          notes: "Work account",
+          nonce: 0, // Password version
+          createdAt: "ISO8601",
+          updatedAt: "ISO8601"
+        }
+      ]
+    }
+  }
+}
+```
+
+**PasswordManagerView.tsx** - Password manager UI:
+- Add/delete login entries
+- Generate passwords on-demand from mnemonic + login + nonce
+- Password visibility toggle
+- Copy login/password to clipboard
+- Rotate password (increment nonce) for compromised passwords
+- Import/export JSON with login entries
+- Works with both saved and temporary wallets
+
 ### UI Components
 
 **WalletUnlockView.tsx** - Authentication and wallet management:
@@ -117,11 +167,13 @@ Storage structure:
 
 **App.tsx** - Main layout with wallet lock/unlock flow:
 - **Lock State**: Shows `WalletUnlockView` when locked
-- **Unlocked State**: Two tabs (Wallet and Transaction builder)
+- **Unlocked State**: Four tabs (Wallet, Transaction builder, Easy mode, Password Manager)
 - **Lock Button**: Clears all wallet data from memory
 - **Wallet Name**: Displays current wallet name in header (if saved)
 1. **Wallet tab**: Mnemonic management, zpub display, address derivation table, UTXO viewer
 2. **Transaction builder tab**: Rendered by `TransactionBuilderView.tsx`
+3. **Easy mode tab**: Simplified interface with combined send/receive functionality
+4. **Password Manager tab**: Deterministic password generation and management
 
 **TransactionBuilderView.tsx** - Complete transaction building interface:
 - **Coin Control**: Checkbox selection of UTXOs to spend
@@ -156,6 +208,28 @@ When building transactions, each UTXO must have a derivation path (either from A
 
 ### Change-Only Transactions
 The transaction builder supports "sweep" or change-only transactions where no destination outputs are specified. In this case, all selected UTXO value (minus fees) goes to the change address. This requires a change address to be specified.
+
+### Password Manager Workflow
+
+The password manager enables deterministic password generation from the same mnemonic used for Bitcoin keys:
+
+1. **Initialization**: HD root key derived from mnemonic using `mnemonicToSeedSync()`
+2. **Login Hashing**: `SHA-256(login + ":" + nonce)` creates unique hash for each login/version combination
+3. **Derivation Index**: First 4 bytes of hash → uint32 index for BIP32 path
+4. **Key Derivation**: `m/128'/0'/{index}` - hardened path outside cryptocurrency range
+5. **Key Mixing**: SHA-256(privateKey || salt) where salt is remaining hash bytes
+6. **Encoding**: Result encoded as base58, truncated to desired length (default 32 chars)
+
+**Password Rotation**: When a password is compromised:
+- Increment `nonce` field (0 → 1 → 2 → ...)
+- Same login, different hash → different derivation index → different password
+- Old passwords remain recoverable by knowing the nonce value
+- No need to update the login identifier
+
+Example:
+- Login: `user@gmail.com`, nonce: 0 → Password A
+- Login: `user@gmail.com`, nonce: 1 → Password B (after rotation)
+- Login: `user@gmail.com`, nonce: 2 → Password C (after second rotation)
 
 ## Backend API (server/)
 
@@ -199,6 +273,7 @@ Network configs are in `server/src/config/networks.ts`.
 - **Storage Encryption**: AES-256-GCM with PBKDF2 key derivation (100k iterations)
 - **Randomness**: Uses `crypto.getRandomValues()` for salts and IVs
 - **Libraries**: All crypto uses vetted libraries (`@scure/*`, `@noble/*`, `bitcoinjs-lib`)
+- **Password Manager**: Deterministic passwords derived via BIP32, never stored in plaintext
 
 ### XSS Protection
 - **React Auto-Escaping**: All user input automatically escaped
