@@ -56,6 +56,7 @@ import WalletUnlockView from './WalletUnlockView';
 import QRCodePopover from './QRCodePopover';
 import SimpleView from './SimpleView';
 import PasswordManagerView from './PasswordManagerView';
+import XpubExplorerView from './XpubExplorerView';
 
 function ColorModeToggle() {
   const { colorMode, toggleColorMode } = useColorMode();
@@ -194,6 +195,7 @@ function App() {
   const [isLocked, setIsLocked] = useState(true);
   const [currentWalletId, setCurrentWalletId] = useState<string | undefined>(undefined);
   const [currentWalletName, setCurrentWalletName] = useState<string | undefined>(undefined);
+  const [xpubExplorerMode, setXpubExplorerMode] = useState(false);
 
   const [mnemonic, setMnemonic] = useState('');
   const [accountZpub, setAccountZpub] = useState('');
@@ -371,9 +373,40 @@ function App() {
     await Promise.all([handleFetchUtxos(), handleFetchTransactions()]);
   };
 
+  // Show Xpub Explorer mode (standalone, without wallet)
+  if (xpubExplorerMode) {
+    return (
+      <Container maxW="5xl" py={12}>
+        <Flex justify="space-between" align="center" mb={10}>
+          <HStack spacing={3}>
+            <Icon as={FaWallet} boxSize={8} color={accent} />
+            <Heading size="lg">Xpub Explorer</Heading>
+          </HStack>
+          <HStack spacing={3}>
+            <NetworkSwitcher />
+            <Button
+              onClick={() => setXpubExplorerMode(false)}
+              variant="ghost"
+              leftIcon={<Icon as={FaLock} />}
+            >
+              Back to Wallets
+            </Button>
+            <ColorModeToggle />
+          </HStack>
+        </Flex>
+        <XpubExplorerView />
+      </Container>
+    );
+  }
+
   // Show unlock screen if locked
   if (isLocked) {
-    return <WalletUnlockView onUnlock={handleUnlock} />;
+    return (
+      <WalletUnlockView
+        onUnlock={handleUnlock}
+        onExploreXpub={() => setXpubExplorerMode(true)}
+      />
+    );
   }
 
   return (
@@ -425,6 +458,7 @@ function App() {
           <Tab>Transaction builder</Tab>
           <Tab>Easy mode</Tab>
           <Tab>Password Manager</Tab>
+          <Tab>Xpub Explorer</Tab>
         </TabList>
 
         <TabPanels>
@@ -567,6 +601,10 @@ function App() {
 
           <TabPanel px={0}>
             <PasswordManagerView mnemonic={mnemonic} walletId={currentWalletId} />
+          </TabPanel>
+
+          <TabPanel px={0}>
+            <XpubExplorerView />
           </TabPanel>
         </TabPanels>
       </Tabs>

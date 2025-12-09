@@ -239,3 +239,135 @@ function convertToZpub(xpub: string, zpubPrefix: Uint8Array): string {
   zpubBytes.set(decoded.slice(zpubPrefix.length), zpubPrefix.length);
   return base58checkCodec.encode(zpubBytes);
 }
+
+export type XpubType = 'zpub' | 'xpub' | 'unknown';
+
+/**
+ * Detects the type of extended public key based on its prefix
+ */
+export function detectXpubType(key: string): XpubType {
+  if (key.startsWith('zpub') || key.startsWith('vpub')) {
+    return 'zpub';
+  }
+  if (key.startsWith('xpub') || key.startsWith('tpub')) {
+    return 'xpub';
+  }
+  return 'unknown';
+}
+
+export interface XpubDerivationResult {
+  xpub: string;
+  xpubType: XpubType;
+  addresses: DerivedAddress[];
+}
+
+/**
+ * Derives addresses from an extended public key (xpub or zpub) without needing the mnemonic.
+ * This is useful for watch-only wallets or exploring external xpubs.
+ */
+export function deriveAddressesFromXpub(
+  xpub: string,
+  options: AddressGenerationOptions = {},
+  networkSymbol: string = 'btc'
+): XpubDerivationResult {
+  const network = NETWORKS[networkSymbol];
+  if (!network) {
+    throw new Error(`Unsupported network: ${networkSymbol}`);
+  }
+
+  const receiveCount = options.receiveCount ?? 20;
+  const changeCount = options.changeCount ?? 20;
+
+  const xpubType = detectXpubType(xpub);
+
+  // Convert zpub back to xpub format for HDKey parsing
+  let normalizedXpub = xpub;
+  if (xpubType === 'zpub') {
+    // zpub uses version bytes 0x04b24746, xpub uses 0x0488b21e
+    // We need to convert zpub to xpub for HDKey to parse it
+    const decoded = base58checkCodec.decode(xpub);
+    const xpubBytes = new Uint8Array(decoded.length);
+    xpubBytes.set(network.xpubPrefix, 0);
+    xpubBytes.set(decoded.slice(4), 4);
+    normalizedXpub = base58checkCodec.encode(xpubBytes);
+  }
+
+  // Parse the xpub as HDKey
+  const hdKey = HDKey.fromExtendedKey(normalizedXpub);
+
+  const addresses: DerivedAddress[] = [];
+
+  // Determine address format based on xpub type
+  const isSegwit = xpubType === 'zpub';
+  const accountPath = isSegwit
+    ? `m/84'/${network.coinType}'/0'`
+    : `m/44'/${network.coinType}'/0'`;
+
+  // Generate receive addresses (chain 0)
+  for (let i = 0; i < receiveCount; i++) {
+    const node = hdKey.deriveChild(0).deriveChild(i);
+    if (!node.publicKey) {
+      throw new Error('Unable to derive public key');
+    }
+
+    const hash = hash160(node.publicKey);
+    let address: string;
+    let format: AddressFormat;
+
+    if (isSegwit && network.bech32Prefix) {
+      address = toBech32Address(hash, network.bech32Prefix);
+      format = 'p2wpkh';
+    } else {
+      address = toBase58Address(hash, network.p2pkhVersion);
+      format = 'p2pkh';
+    }
+
+    addresses.push({
+      address,
+      path: `${accountPath}/0/${i}`,
+      publicKey: Array.from(node.publicKey)
+        .map((byte) => byte.toString(16).padStart(2, '0'))
+        .join(''),
+      type: 'receive',
+      format,
+      index: i,
+    });
+  }
+
+  // Generate change addresses (chain 1)
+  for (let i = 0; i < changeCount; i++) {
+    const node = hdKey.deriveChild(1).deriveChild(i);
+    if (!node.publicKey) {
+      throw new Error('Unable to derive public key');
+    }
+
+    const hash = hash160(node.publicKey);
+    let address: string;
+    let format: AddressFormat;
+
+    if (isSegwit && network.bech32Prefix) {
+      address = toBech32Address(hash, network.bech32Prefix);
+      format = 'p2wpkh';
+    } else {
+      address = toBase58Address(hash, network.p2pkhVersion);
+      format = 'p2pkh';
+    }
+
+    addresses.push({
+      address,
+      path: `${accountPath}/1/${i}`,
+      publicKey: Array.from(node.publicKey)
+        .map((byte) => byte.toString(16).padStart(2, '0'))
+        .join(''),
+      type: 'change',
+      format,
+      index: i,
+    });
+  }
+
+  return {
+    xpub,
+    xpubType,
+    addresses,
+  };
+}

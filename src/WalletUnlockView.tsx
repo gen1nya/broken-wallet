@@ -35,7 +35,7 @@ import {
   FormErrorMessage,
 } from '@chakra-ui/react';
 import { useState } from 'react';
-import { FaLock, FaPlus, FaRandom, FaTrash, FaDownload } from 'react-icons/fa';
+import { FaLock, FaPlus, FaRandom, FaTrash, FaDownload, FaSearch } from 'react-icons/fa';
 import { createRandomMnemonic } from './bitcoin';
 import {
   decryptWallet,
@@ -50,9 +50,10 @@ import { wordlist } from '@scure/bip39/wordlists/english';
 
 interface WalletUnlockViewProps {
   onUnlock: (mnemonic: string, walletId?: string, walletName?: string) => void;
+  onExploreXpub?: () => void;
 }
 
-export default function WalletUnlockView({ onUnlock }: WalletUnlockViewProps) {
+export default function WalletUnlockView({ onUnlock, onExploreXpub }: WalletUnlockViewProps) {
   const cleanMnemonicForDisplay = (value: string) =>
     value
       .toLowerCase()
@@ -404,6 +405,32 @@ export default function WalletUnlockView({ onUnlock }: WalletUnlockViewProps) {
             </Alert>
           </Stack>
         </Box>
+
+        {/* Xpub Explorer Section */}
+        {onExploreXpub && (
+          <Box borderWidth={1} borderRadius="lg" p={6} borderColor="purple.200" _dark={{ borderColor: 'purple.700' }}>
+            <HStack justify="space-between" align="center">
+              <Box>
+                <Heading size="md" mb={2}>
+                  Xpub Explorer
+                </Heading>
+                <Text color="gray.500" fontSize="sm">
+                  Explore any extended public key (xpub/zpub) without importing a wallet.
+                  View addresses, transactions, and UTXOs in watch-only mode.
+                </Text>
+              </Box>
+              <Button
+                leftIcon={<FaSearch />}
+                colorScheme="purple"
+                onClick={onExploreXpub}
+                size="lg"
+                minW="150px"
+              >
+                Explore Xpub
+              </Button>
+            </HStack>
+          </Box>
+        )}
 
         {/* Saved Wallets Section */}
         {savedWallets.length > 0 && (
