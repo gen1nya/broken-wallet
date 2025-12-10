@@ -30,8 +30,8 @@ import {
 } from '@chakra-ui/react';
 import { useState, useMemo, useCallback } from 'react';
 import { FaSearch, FaSync } from 'react-icons/fa';
-import { DerivedAddress, deriveAddressesFromXpub, detectXpubType, XpubType } from './bitcoin';
-import { BlockbookTransaction, BlockbookUtxo, fetchAllTransactions, fetchUtxos } from './blockbookClient';
+import { DerivedAddress, deriveAddressesFromXpub, detectExtendedKeyInfo, ExtendedKeyInfo, XpubType, NETWORKS } from './bitcoin';
+import { BlockbookTransaction, BlockbookUtxo, fetchAllTransactions, fetchUtxos, NetworkSymbol } from './blockbookClient';
 import { useNetwork } from './NetworkContext';
 import { QRCodeSVG } from 'qrcode.react';
 import TransactionList from './TransactionList';
@@ -334,6 +334,8 @@ export default function XpubExplorerView() {
   const [gapLimit, setGapLimit] = useState(20);
   const [addresses, setAddresses] = useState<DerivedAddress[]>([]);
   const [xpubType, setXpubType] = useState<XpubType>('unknown');
+  const [keyInfo, setKeyInfo] = useState<ExtendedKeyInfo | null>(null);
+  const [detectedNetwork, setDetectedNetwork] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<BlockbookTransaction[]>([]);
   const [utxos, setUtxos] = useState<BlockbookUtxo[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -372,20 +374,25 @@ export default function XpubExplorerView() {
     let allTransactions: BlockbookTransaction[] = [];
     let currentAddresses: DerivedAddress[] = [];
 
-    // Detect xpub type
-    const detectedType = detectXpubType(xpub);
-    if (detectedType === 'unknown') {
-      throw new Error('Unknown key format. Please enter a valid xpub or zpub.');
+    // Detect extended key info (type and network)
+    const detectedKeyInfo = detectExtendedKeyInfo(xpub);
+    if (detectedKeyInfo.type === 'unknown') {
+      throw new Error('Unknown key format. Supported formats: xpub, zpub (BTC), dgub (DOGE), Ltub/Mtub (LTC), drkp (DASH).');
     }
-    setXpubType(detectedType);
+    setXpubType(detectedKeyInfo.type);
+    setKeyInfo(detectedKeyInfo);
+    setDetectedNetwork(detectedKeyInfo.network);
+
+    // Use detected network for API calls
+    const effectiveNetwork = (detectedKeyInfo.network || network) as NetworkSymbol;
 
     // First, fetch all transactions for this xpub
     setDiscoveryStatus({
       phase: 'fetching',
-      message: 'Fetching transactions from blockchain...',
+      message: `Fetching transactions from ${NETWORKS[effectiveNetwork]?.extPubKeyPrefix || effectiveNetwork} blockchain...`,
     });
 
-    const txResult = await fetchAllTransactions(xpub, network, 1000);
+    const txResult = await fetchAllTransactions(xpub, effectiveNetwork, 1000);
     allTransactions = txResult.transactions ?? [];
 
     // If no transactions, just derive gap limit addresses and stop
@@ -398,7 +405,7 @@ export default function XpubExplorerView() {
       const result = deriveAddressesFromXpub(
         xpub,
         { receiveCount: gap, changeCount: gap },
-        network
+        effectiveNetwork
       );
 
       return {
@@ -422,7 +429,7 @@ export default function XpubExplorerView() {
       const result = deriveAddressesFromXpub(
         xpub,
         { receiveCount: currentCount, changeCount: currentCount },
-        network
+        effectiveNetwork
       );
       currentAddresses = result.addresses;
 
@@ -463,7 +470,7 @@ export default function XpubExplorerView() {
         const finalResult = deriveAddressesFromXpub(
           xpub,
           { receiveCount: maxRequired, changeCount: maxRequired },
-          network
+          effectiveNetwork
         );
 
         return {
@@ -512,7 +519,7 @@ export default function XpubExplorerView() {
 
   const handleExplore = async () => {
     if (!xpubInput.trim()) {
-      setError('Please enter an xpub or zpub');
+      setError('Please enter an extended public key');
       return;
     }
 
@@ -521,14 +528,20 @@ export default function XpubExplorerView() {
     setAddresses([]);
     setTransactions([]);
     setUtxos([]);
+    setKeyInfo(null);
+    setDetectedNetwork(null);
     setDiscoveryStatus({ phase: 'idle', message: '' });
 
     try {
-      // Run auto-discovery
+      // Run auto-discovery (this sets keyInfo and detectedNetwork)
       const discoveryResult = await runDiscovery(xpubInput.trim(), gapLimit);
 
       setAddresses(discoveryResult.addresses);
       setTransactions(discoveryResult.transactions);
+
+      // Use detected network for UTXO fetch
+      const detectedKeyInfo = detectExtendedKeyInfo(xpubInput.trim());
+      const effectiveNetwork = (detectedKeyInfo.network || network) as NetworkSymbol;
 
       // Fetch UTXOs
       setDiscoveryStatus(prev => ({
@@ -537,7 +550,7 @@ export default function XpubExplorerView() {
         message: 'Fetching UTXOs...',
       }));
 
-      const utxoResult = await fetchUtxos(xpubInput.trim(), network);
+      const utxoResult = await fetchUtxos(xpubInput.trim(), effectiveNetwork);
       setUtxos(utxoResult);
 
       setDiscoveryStatus(prev => ({
@@ -571,7 +584,9 @@ export default function XpubExplorerView() {
       setAddresses(discoveryResult.addresses);
       setTransactions(discoveryResult.transactions);
 
-      const utxoResult = await fetchUtxos(xpubInput.trim(), network);
+      // Use detected network for UTXO fetch
+      const effectiveNetwork = (detectedNetwork || network) as NetworkSymbol;
+      const utxoResult = await fetchUtxos(xpubInput.trim(), effectiveNetwork);
       setUtxos(utxoResult);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to refresh data');
@@ -594,16 +609,17 @@ export default function XpubExplorerView() {
         <Stack spacing={4}>
           <Heading size="md">Explore Extended Public Key</Heading>
           <Text color="gray.500">
-            Enter any xpub or zpub to view its derived addresses, UTXOs, and transaction history.
+            Enter an extended public key to view its derived addresses, UTXOs, and transaction history.
+            Supports multiple formats: xpub/zpub (BTC), dgub (DOGE), Ltub/Mtub (LTC), drkp (DASH).
             Addresses are automatically discovered using BIP44 gap limit algorithm.
           </Text>
 
           <FormControl>
-            <FormLabel>Extended Public Key (xpub / zpub)</FormLabel>
+            <FormLabel>Extended Public Key</FormLabel>
             <Textarea
               value={xpubInput}
               onChange={(e) => setXpubInput(e.target.value)}
-              placeholder="xpub... or zpub..."
+              placeholder="xpub... / zpub... / dgub... / Ltub... / Mtub... / drkp..."
               fontFamily="mono"
               fontSize="sm"
               rows={2}
@@ -701,16 +717,26 @@ export default function XpubExplorerView() {
             <Stack spacing={4}>
               <HStack justify="space-between" flexWrap="wrap">
                 <Heading size="md">Overview</Heading>
-                <HStack spacing={2}>
+                <HStack spacing={2} flexWrap="wrap">
+                  {keyInfo && detectedNetwork && (
+                    <Badge colorScheme="orange" fontSize="sm" px={2}>
+                      {NETWORKS[detectedNetwork]?.extPubKeyPrefix?.toUpperCase() || detectedNetwork.toUpperCase()}
+                    </Badge>
+                  )}
                   <Badge colorScheme="blue" fontSize="sm" px={2}>
-                    {xpubType.toUpperCase()}
+                    {xpubType === 'segwit' ? 'SEGWIT' : 'LEGACY'}
                   </Badge>
-                  <Badge colorScheme="purple" fontSize="sm" px={2}>
+                  {keyInfo?.prefix && (
+                    <Badge colorScheme="purple" fontSize="sm" px={2}>
+                      {keyInfo.prefix}
+                    </Badge>
+                  )}
+                  <Badge colorScheme="gray" fontSize="sm" px={2}>
                     Gap: {gapLimit}
                   </Badge>
                   {totalBalance > 0n && (
                     <Badge colorScheme="green" fontSize="md" px={3} py={1}>
-                      {formatCrypto(totalBalance, networkInfo.ticker)}
+                      {formatCrypto(totalBalance, detectedNetwork ? NETWORKS[detectedNetwork]?.extPubKeyPrefix?.toUpperCase() || networkInfo.ticker : networkInfo.ticker)}
                     </Badge>
                   )}
                 </HStack>
@@ -718,12 +744,12 @@ export default function XpubExplorerView() {
 
               <Grid templateColumns={{ base: '1fr', md: 'repeat(4, 1fr)' }} gap={4}>
                 <Box p={4} borderWidth="1px" borderRadius="md">
-                  <Text fontWeight="bold" mb={1}>Total Addresses</Text>
-                  <Text fontSize="2xl">{addresses.length}</Text>
+                  <Text fontWeight="bold" mb={1}>Network</Text>
+                  <Text fontSize="xl">{detectedNetwork ? (NETWORKS[detectedNetwork] as { extPubKeyPrefix?: string } | undefined)?.extPubKeyPrefix?.toUpperCase() || detectedNetwork.toUpperCase() : networkInfo.name}</Text>
                 </Box>
                 <Box p={4} borderWidth="1px" borderRadius="md">
-                  <Text fontWeight="bold" mb={1}>Receive</Text>
-                  <Text fontSize="2xl">{receiveAddresses.length}</Text>
+                  <Text fontWeight="bold" mb={1}>Total Addresses</Text>
+                  <Text fontSize="2xl">{addresses.length}</Text>
                 </Box>
                 <Box p={4} borderWidth="1px" borderRadius="md">
                   <Text fontWeight="bold" mb={1}>Transactions</Text>
@@ -748,21 +774,30 @@ export default function XpubExplorerView() {
               </Text>
 
               <Text fontSize="md" fontWeight="bold">
-                {xpubType === 'zpub' ? 'Native SegWit (P2WPKH)' : 'Legacy (P2PKH)'}
+                {xpubType === 'segwit' ? 'Native SegWit (P2WPKH)' : 'Legacy (P2PKH)'}
               </Text>
 
-              <AddressChain
-                addresses={receiveAddresses}
-                label={`Receive (${xpubType === 'zpub' ? "m/84'/0'/0'/0/x" : "m/44'/0'/0'/0/x"})`}
-                transactions={transactions}
-                ticker={networkInfo.ticker}
-              />
-              <AddressChain
-                addresses={changeAddresses}
-                label={`Change (${xpubType === 'zpub' ? "m/84'/0'/0'/1/x" : "m/44'/0'/0'/1/x"})`}
-                transactions={transactions}
-                ticker={networkInfo.ticker}
-              />
+              {(() => {
+                const coinType = detectedNetwork ? NETWORKS[detectedNetwork]?.coinType ?? 0 : networkInfo.coinType ?? 0;
+                const basePath = xpubType === 'segwit' ? `m/84'/${coinType}'/0'` : `m/44'/${coinType}'/0'`;
+                const ticker = detectedNetwork ? (NETWORKS[detectedNetwork] as { extPubKeyPrefix?: string } | undefined)?.extPubKeyPrefix?.toUpperCase() || detectedNetwork.toUpperCase() : networkInfo.ticker;
+                return (
+                  <>
+                    <AddressChain
+                      addresses={receiveAddresses}
+                      label={`Receive (${basePath}/0/x)`}
+                      transactions={transactions}
+                      ticker={ticker}
+                    />
+                    <AddressChain
+                      addresses={changeAddresses}
+                      label={`Change (${basePath}/1/x)`}
+                      transactions={transactions}
+                      ticker={ticker}
+                    />
+                  </>
+                );
+              })()}
             </Stack>
           </Box>
 
@@ -770,7 +805,11 @@ export default function XpubExplorerView() {
             <Box p={6} rounded="lg" bg={panelBg} shadow="md">
               <Stack spacing={4}>
                 <Heading size="md">UTXOs ({utxos.length})</Heading>
-                <UtxoList utxos={utxos} addressMap={addressMap} ticker={networkInfo.ticker} />
+                <UtxoList
+                  utxos={utxos}
+                  addressMap={addressMap}
+                  ticker={detectedNetwork ? (NETWORKS[detectedNetwork] as { extPubKeyPrefix?: string } | undefined)?.extPubKeyPrefix?.toUpperCase() || detectedNetwork.toUpperCase() : networkInfo.ticker}
+                />
               </Stack>
             </Box>
           )}

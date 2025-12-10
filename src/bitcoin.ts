@@ -35,7 +35,30 @@ export interface NetworkConfig {
   coinType: number;
   zpubPrefix?: Uint8Array;
   xpubPrefix: Uint8Array;
+  // Network-specific extended public key prefixes for display/detection
+  extPubKeyPrefix?: string; // e.g., 'dgub', 'Ltub', 'drkp'
+  extPubKeyPrefixSegwit?: string; // e.g., 'Mtub' for Litecoin segwit
 }
+
+// Extended public key version bytes for different networks
+// Standard xpub: 0x0488b21e (mainnet), 0x043587cf (testnet)
+// zpub (BTC segwit): 0x04b24746
+// dgub (DOGE): 0x02facafd
+// Ltub (LTC legacy): 0x019da462
+// Mtub (LTC segwit): 0x01b26ef6
+// drkp (DASH): 0x02fe52cc
+const EXTENDED_KEY_VERSIONS = {
+  // Bitcoin
+  xpub: new Uint8Array([0x04, 0x88, 0xb2, 0x1e]),
+  zpub: new Uint8Array([0x04, 0xb2, 0x47, 0x46]),
+  // Dogecoin
+  dgub: new Uint8Array([0x02, 0xfa, 0xca, 0xfd]),
+  // Litecoin
+  Ltub: new Uint8Array([0x01, 0x9d, 0xa4, 0x62]),
+  Mtub: new Uint8Array([0x01, 0xb2, 0x6e, 0xf6]),
+  // Dash
+  drkp: new Uint8Array([0x02, 0xfe, 0x52, 0xcc]),
+};
 
 // Network configurations
 export const NETWORKS: Record<string, NetworkConfig> = {
@@ -43,27 +66,35 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     bech32Prefix: 'bc',
     p2pkhVersion: 0x00,
     coinType: 0,
-    zpubPrefix: new Uint8Array([0x04, 0xb2, 0x47, 0x46]),
-    xpubPrefix: new Uint8Array([0x04, 0x88, 0xb2, 0x1e]),
+    zpubPrefix: EXTENDED_KEY_VERSIONS.zpub,
+    xpubPrefix: EXTENDED_KEY_VERSIONS.xpub,
+    extPubKeyPrefix: 'xpub',
+    extPubKeyPrefixSegwit: 'zpub',
   },
   ltc: {
     bech32Prefix: 'ltc',
     p2pkhVersion: 0x30,
     coinType: 2,
-    zpubPrefix: new Uint8Array([0x04, 0xb2, 0x47, 0x46]), // Same as BTC for segwit
-    xpubPrefix: new Uint8Array([0x04, 0x88, 0xb2, 0x1e]), // Same as BTC for legacy
+    zpubPrefix: EXTENDED_KEY_VERSIONS.Mtub,
+    xpubPrefix: EXTENDED_KEY_VERSIONS.Ltub,
+    extPubKeyPrefix: 'Ltub',
+    extPubKeyPrefixSegwit: 'Mtub',
   },
   doge: {
     p2pkhVersion: 0x1e,
     coinType: 3,
-    xpubPrefix: new Uint8Array([0x04, 0x88, 0xb2, 0x1e]),
+    xpubPrefix: EXTENDED_KEY_VERSIONS.dgub,
+    extPubKeyPrefix: 'dgub',
   },
   dash: {
     p2pkhVersion: 0x4c,
     coinType: 5,
-    xpubPrefix: new Uint8Array([0x04, 0x88, 0xb2, 0x1e]),
+    xpubPrefix: EXTENDED_KEY_VERSIONS.drkp,
+    extPubKeyPrefix: 'drkp',
   },
 };
+
+export { EXTENDED_KEY_VERSIONS };
 
 const base58checkCodec = base58check(sha256);
 
@@ -240,56 +271,117 @@ function convertToZpub(xpub: string, zpubPrefix: Uint8Array): string {
   return base58checkCodec.encode(zpubBytes);
 }
 
-export type XpubType = 'zpub' | 'xpub' | 'unknown';
+export type XpubType = 'segwit' | 'legacy' | 'unknown';
+
+export interface ExtendedKeyInfo {
+  type: XpubType;
+  network: string | null;
+  prefix: string;
+  isTestnet: boolean;
+}
+
+// Map of extended key prefixes to their network and type
+const EXTENDED_KEY_PREFIX_MAP: Record<string, { network: string; type: XpubType; isTestnet: boolean }> = {
+  // Bitcoin mainnet
+  'xpub': { network: 'btc', type: 'legacy', isTestnet: false },
+  'zpub': { network: 'btc', type: 'segwit', isTestnet: false },
+  // Bitcoin testnet
+  'tpub': { network: 'btc', type: 'legacy', isTestnet: true },
+  'vpub': { network: 'btc', type: 'segwit', isTestnet: true },
+  // Litecoin
+  'Ltub': { network: 'ltc', type: 'legacy', isTestnet: false },
+  'Mtub': { network: 'ltc', type: 'segwit', isTestnet: false },
+  // Dogecoin
+  'dgub': { network: 'doge', type: 'legacy', isTestnet: false },
+  // Dash
+  'drkp': { network: 'dash', type: 'legacy', isTestnet: false },
+};
 
 /**
- * Detects the type of extended public key based on its prefix
+ * Detects the type and network of an extended public key based on its prefix
+ */
+export function detectExtendedKeyInfo(key: string): ExtendedKeyInfo {
+  for (const [prefix, info] of Object.entries(EXTENDED_KEY_PREFIX_MAP)) {
+    if (key.startsWith(prefix)) {
+      return {
+        type: info.type,
+        network: info.network,
+        prefix,
+        isTestnet: info.isTestnet,
+      };
+    }
+  }
+  return { type: 'unknown', network: null, prefix: '', isTestnet: false };
+}
+
+/**
+ * Detects the type of extended public key based on its prefix (legacy function)
  */
 export function detectXpubType(key: string): XpubType {
-  if (key.startsWith('zpub') || key.startsWith('vpub')) {
-    return 'zpub';
-  }
-  if (key.startsWith('xpub') || key.startsWith('tpub')) {
-    return 'xpub';
-  }
-  return 'unknown';
+  const info = detectExtendedKeyInfo(key);
+  return info.type;
 }
 
 export interface XpubDerivationResult {
   xpub: string;
   xpubType: XpubType;
+  keyInfo: ExtendedKeyInfo;
   addresses: DerivedAddress[];
 }
 
+// Standard xpub version bytes (used for HDKey parsing)
+const STANDARD_XPUB_PREFIX = new Uint8Array([0x04, 0x88, 0xb2, 0x1e]);
+
 /**
- * Derives addresses from an extended public key (xpub or zpub) without needing the mnemonic.
+ * Normalizes any extended public key to standard xpub format for HDKey parsing.
+ * HDKey only understands standard xpub format, so we need to convert
+ * network-specific formats (dgub, Ltub, Mtub, drkp, zpub) to xpub.
+ */
+function normalizeToStandardXpub(key: string): string {
+  const decoded = base58checkCodec.decode(key);
+  const xpubBytes = new Uint8Array(decoded.length);
+  xpubBytes.set(STANDARD_XPUB_PREFIX, 0);
+  xpubBytes.set(decoded.slice(4), 4);
+  return base58checkCodec.encode(xpubBytes);
+}
+
+/**
+ * Derives addresses from an extended public key without needing the mnemonic.
+ * Supports various formats: xpub, zpub (BTC), dgub (DOGE), Ltub/Mtub (LTC), drkp (DASH).
  * This is useful for watch-only wallets or exploring external xpubs.
+ *
+ * @param xpub - Extended public key in any supported format
+ * @param options - Address generation options
+ * @param networkSymbol - Network symbol (auto-detected from key if not provided)
  */
 export function deriveAddressesFromXpub(
   xpub: string,
   options: AddressGenerationOptions = {},
-  networkSymbol: string = 'btc'
+  networkSymbol?: string
 ): XpubDerivationResult {
-  const network = NETWORKS[networkSymbol];
+  const keyInfo = detectExtendedKeyInfo(xpub);
+
+  // Use auto-detected network if not provided
+  const effectiveNetwork = networkSymbol || keyInfo.network || 'btc';
+
+  const network = NETWORKS[effectiveNetwork];
   if (!network) {
-    throw new Error(`Unsupported network: ${networkSymbol}`);
+    throw new Error(`Unsupported network: ${effectiveNetwork}`);
   }
 
   const receiveCount = options.receiveCount ?? 20;
   const changeCount = options.changeCount ?? 20;
 
-  const xpubType = detectXpubType(xpub);
+  const xpubType = keyInfo.type;
 
-  // Convert zpub back to xpub format for HDKey parsing
+  // Convert any extended key format to standard xpub for HDKey parsing
   let normalizedXpub = xpub;
-  if (xpubType === 'zpub') {
-    // zpub uses version bytes 0x04b24746, xpub uses 0x0488b21e
-    // We need to convert zpub to xpub for HDKey to parse it
-    const decoded = base58checkCodec.decode(xpub);
-    const xpubBytes = new Uint8Array(decoded.length);
-    xpubBytes.set(network.xpubPrefix, 0);
-    xpubBytes.set(decoded.slice(4), 4);
-    normalizedXpub = base58checkCodec.encode(xpubBytes);
+  if (xpub.startsWith('xpub')) {
+    // Already in standard format
+    normalizedXpub = xpub;
+  } else if (keyInfo.type !== 'unknown') {
+    // Convert network-specific format to standard xpub
+    normalizedXpub = normalizeToStandardXpub(xpub);
   }
 
   // Parse the xpub as HDKey
@@ -298,7 +390,7 @@ export function deriveAddressesFromXpub(
   const addresses: DerivedAddress[] = [];
 
   // Determine address format based on xpub type
-  const isSegwit = xpubType === 'zpub';
+  const isSegwit = xpubType === 'segwit';
   const accountPath = isSegwit
     ? `m/84'/${network.coinType}'/0'`
     : `m/44'/${network.coinType}'/0'`;
@@ -368,6 +460,7 @@ export function deriveAddressesFromXpub(
   return {
     xpub,
     xpubType,
+    keyInfo,
     addresses,
   };
 }
