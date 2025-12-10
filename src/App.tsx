@@ -196,6 +196,7 @@ function App() {
   const [currentWalletId, setCurrentWalletId] = useState<string | undefined>(undefined);
   const [currentWalletName, setCurrentWalletName] = useState<string | undefined>(undefined);
   const [xpubExplorerMode, setXpubExplorerMode] = useState(false);
+  const [activeTabIndex, setActiveTabIndex] = useState(2); // Default to Easy mode (index 2)
 
   const [mnemonic, setMnemonic] = useState('');
   const [accountZpub, setAccountZpub] = useState('');
@@ -383,7 +384,6 @@ function App() {
             <Heading size="lg">Xpub Explorer</Heading>
           </HStack>
           <HStack spacing={3}>
-            <NetworkSwitcher />
             <Button
               onClick={() => setXpubExplorerMode(false)}
               variant="ghost"
@@ -438,7 +438,7 @@ function App() {
           >
             Refresh
           </Button>
-          <NetworkSwitcher />
+          {activeTabIndex !== 4 && <NetworkSwitcher />}
           <Button
             onClick={handleLockOrExit}
             variant="ghost"
@@ -452,7 +452,7 @@ function App() {
         </HStack>
       </Flex>
 
-      <Tabs variant="enclosed" colorScheme="purple" defaultIndex={2}>
+      <Tabs variant="enclosed" colorScheme="purple" index={activeTabIndex} onChange={setActiveTabIndex}>
         <TabList>
           <Tab>Wallet</Tab>
           <Tab>Transaction builder</Tab>

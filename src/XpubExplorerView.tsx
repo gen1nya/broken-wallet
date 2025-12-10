@@ -364,6 +364,15 @@ export default function XpubExplorerView() {
     [utxos]
   );
 
+  // Get effective ticker based on detected network
+  const effectiveTicker = useMemo(() => {
+    if (detectedNetwork && NETWORKS[detectedNetwork]) {
+      // Use network symbol (BTC, DOGE, LTC, DASH) as ticker
+      return detectedNetwork.toUpperCase();
+    }
+    return networkInfo.ticker;
+  }, [detectedNetwork, networkInfo.ticker]);
+
   const runDiscovery = useCallback(async (xpub: string, gap: number) => {
     const MAX_ITERATIONS = 20;
     const INITIAL_COUNT = Math.max(gap, 20);
@@ -736,7 +745,7 @@ export default function XpubExplorerView() {
                   </Badge>
                   {totalBalance > 0n && (
                     <Badge colorScheme="green" fontSize="md" px={3} py={1}>
-                      {formatCrypto(totalBalance, detectedNetwork ? NETWORKS[detectedNetwork]?.extPubKeyPrefix?.toUpperCase() || networkInfo.ticker : networkInfo.ticker)}
+                      {formatCrypto(totalBalance, effectiveTicker)}
                     </Badge>
                   )}
                 </HStack>
@@ -745,7 +754,7 @@ export default function XpubExplorerView() {
               <Grid templateColumns={{ base: '1fr', md: 'repeat(4, 1fr)' }} gap={4}>
                 <Box p={4} borderWidth="1px" borderRadius="md">
                   <Text fontWeight="bold" mb={1}>Network</Text>
-                  <Text fontSize="xl">{detectedNetwork ? (NETWORKS[detectedNetwork] as { extPubKeyPrefix?: string } | undefined)?.extPubKeyPrefix?.toUpperCase() || detectedNetwork.toUpperCase() : networkInfo.name}</Text>
+                  <Text fontSize="xl">{effectiveTicker}</Text>
                 </Box>
                 <Box p={4} borderWidth="1px" borderRadius="md">
                   <Text fontWeight="bold" mb={1}>Total Addresses</Text>
@@ -780,20 +789,19 @@ export default function XpubExplorerView() {
               {(() => {
                 const coinType = detectedNetwork ? NETWORKS[detectedNetwork]?.coinType ?? 0 : networkInfo.coinType ?? 0;
                 const basePath = xpubType === 'segwit' ? `m/84'/${coinType}'/0'` : `m/44'/${coinType}'/0'`;
-                const ticker = detectedNetwork ? (NETWORKS[detectedNetwork] as { extPubKeyPrefix?: string } | undefined)?.extPubKeyPrefix?.toUpperCase() || detectedNetwork.toUpperCase() : networkInfo.ticker;
                 return (
                   <>
                     <AddressChain
                       addresses={receiveAddresses}
                       label={`Receive (${basePath}/0/x)`}
                       transactions={transactions}
-                      ticker={ticker}
+                      ticker={effectiveTicker}
                     />
                     <AddressChain
                       addresses={changeAddresses}
                       label={`Change (${basePath}/1/x)`}
                       transactions={transactions}
-                      ticker={ticker}
+                      ticker={effectiveTicker}
                     />
                   </>
                 );
@@ -808,7 +816,7 @@ export default function XpubExplorerView() {
                 <UtxoList
                   utxos={utxos}
                   addressMap={addressMap}
-                  ticker={detectedNetwork ? (NETWORKS[detectedNetwork] as { extPubKeyPrefix?: string } | undefined)?.extPubKeyPrefix?.toUpperCase() || detectedNetwork.toUpperCase() : networkInfo.ticker}
+                  ticker={effectiveTicker}
                 />
               </Stack>
             </Box>
@@ -821,6 +829,7 @@ export default function XpubExplorerView() {
                 transactions={transactions}
                 onTransactionClick={handleTransactionClick}
                 addressMap={addressMap}
+                ticker={effectiveTicker}
               />
             </Stack>
           </Box>

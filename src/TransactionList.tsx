@@ -20,6 +20,7 @@ interface TransactionListProps {
   transactions: BlockbookTransaction[];
   onTransactionClick: (transaction: BlockbookTransaction) => void;
   addressMap: Map<string, DerivedAddress>;
+  ticker?: string; // Override ticker from network context
 }
 
 const formatCrypto = (value: string | number, ticker: string) => {
@@ -34,8 +35,9 @@ const formatDate = (timestamp?: number) => {
   return date.toLocaleString();
 };
 
-export default function TransactionList({ transactions, onTransactionClick, addressMap }: TransactionListProps) {
+export default function TransactionList({ transactions, onTransactionClick, addressMap, ticker }: TransactionListProps) {
   const { networkInfo } = useNetwork();
+  const effectiveTicker = ticker ?? networkInfo.ticker;
   const borderColor = useColorModeValue('gray.200', 'gray.600');
   const hoverBg = useColorModeValue('gray.50', 'gray.700');
 
@@ -47,7 +49,7 @@ export default function TransactionList({ transactions, onTransactionClick, addr
     <Stack spacing={3}>
       {transactions.map((tx) => {
         const isConfirmed = (tx.confirmations ?? 0) > 0;
-        const fee = formatCrypto(tx.fees, networkInfo.ticker);
+        const fee = formatCrypto(tx.fees, effectiveTicker);
 
         // Check wallet involvement using combined approach (isOwn + addressMap)
         const walletInputs = tx.vin.filter(input => {
@@ -166,7 +168,7 @@ export default function TransactionList({ transactions, onTransactionClick, addr
                       'inherit'
                     }
                   >
-                    {walletImpact > 0n ? '+' : walletImpact < 0n ? '-' : ''}{formatCrypto(Number(walletImpact < 0n ? -walletImpact : walletImpact), networkInfo.ticker)}
+                    {walletImpact > 0n ? '+' : walletImpact < 0n ? '-' : ''}{formatCrypto(Number(walletImpact < 0n ? -walletImpact : walletImpact), effectiveTicker)}
                   </Text>
                 </Box>
                 <Box>
