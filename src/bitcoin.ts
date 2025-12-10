@@ -227,8 +227,10 @@ export function deriveWalletFromMnemonic(
       deriveSegwitAddress(segwitHDKey, 1, index, 'change', network, segwitAccountPath),
     );
 
+    // Always store as standard zpub format for API compatibility
+    // Conversion to network-specific format (Mtub, etc.) is done only for display
     segwitAccount = {
-      zpub: convertToZpub(segwitHDKey.publicExtendedKey, network.zpubPrefix),
+      zpub: convertToZpub(segwitHDKey.publicExtendedKey, EXTENDED_KEY_VERSIONS.zpub),
       addresses: [...segwitReceive, ...segwitChange],
     };
   }
@@ -269,6 +271,62 @@ function convertToZpub(xpub: string, zpubPrefix: Uint8Array): string {
   zpubBytes.set(zpubPrefix, 0);
   zpubBytes.set(decoded.slice(zpubPrefix.length), zpubPrefix.length);
   return base58checkCodec.encode(zpubBytes);
+}
+
+/**
+ * Converts an extended public key to the display format for a specific network.
+ * Used for UI display - internally keys are stored in standard xpub/zpub format for API compatibility.
+ *
+ * @param key - Extended public key (xpub or zpub format)
+ * @param networkSymbol - Target network (btc, doge, ltc, dash)
+ * @param isSegwit - Whether this is a segwit key (BIP84) or legacy key (BIP44)
+ * @returns Key with network-specific prefix (e.g., dgub, Ltub, Mtub, drkp)
+ */
+export function convertToNetworkFormat(key: string, networkSymbol: string, isSegwit: boolean): string {
+  const network = NETWORKS[networkSymbol];
+  if (!network) {
+    return key; // Return unchanged if network not found
+  }
+
+  // Determine target prefix based on network and key type
+  const targetPrefix = isSegwit ? network.zpubPrefix : network.xpubPrefix;
+  if (!targetPrefix) {
+    return key; // Network doesn't support this key type
+  }
+
+  // Decode the key and replace the version bytes
+  try {
+    const decoded = base58checkCodec.decode(key);
+    const converted = new Uint8Array(decoded.length);
+    converted.set(targetPrefix, 0);
+    converted.set(decoded.slice(4), 4);
+    return base58checkCodec.encode(converted);
+  } catch {
+    return key; // Return unchanged if conversion fails
+  }
+}
+
+/**
+ * Gets the display label for an extended public key based on network.
+ * @returns Object with prefix name and BIP standard
+ */
+export function getExtendedKeyLabel(networkSymbol: string, isSegwit: boolean): { prefix: string; bip: string } {
+  const network = NETWORKS[networkSymbol];
+  if (!network) {
+    return isSegwit ? { prefix: 'zpub', bip: 'BIP84' } : { prefix: 'xpub', bip: 'BIP44' };
+  }
+
+  if (isSegwit) {
+    return {
+      prefix: network.extPubKeyPrefixSegwit || 'zpub',
+      bip: 'BIP84',
+    };
+  } else {
+    return {
+      prefix: network.extPubKeyPrefix || 'xpub',
+      bip: 'BIP44',
+    };
+  }
 }
 
 export type XpubType = 'segwit' | 'legacy' | 'unknown';
@@ -343,6 +401,42 @@ function normalizeToStandardXpub(key: string): string {
   xpubBytes.set(STANDARD_XPUB_PREFIX, 0);
   xpubBytes.set(decoded.slice(4), 4);
   return base58checkCodec.encode(xpubBytes);
+}
+
+/**
+ * Normalizes any extended public key to standard Bitcoin format for API calls.
+ * - Segwit keys (Mtub, vpub, etc.) -> zpub
+ * - Legacy keys (dgub, Ltub, drkp, tpub, etc.) -> xpub
+ *
+ * NowNodes Blockbook API expects standard xpub/zpub format regardless of the network.
+ *
+ * @param key - Extended public key in any supported format
+ * @returns Key in standard xpub or zpub format
+ */
+export function normalizeKeyForApi(key: string): string {
+  const keyInfo = detectExtendedKeyInfo(key);
+
+  if (keyInfo.type === 'unknown') {
+    return key; // Return unchanged if format not recognized
+  }
+
+  try {
+    const decoded = base58checkCodec.decode(key);
+    const converted = new Uint8Array(decoded.length);
+
+    if (keyInfo.type === 'segwit') {
+      // Convert to standard zpub
+      converted.set(EXTENDED_KEY_VERSIONS.zpub, 0);
+    } else {
+      // Convert to standard xpub
+      converted.set(STANDARD_XPUB_PREFIX, 0);
+    }
+
+    converted.set(decoded.slice(4), 4);
+    return base58checkCodec.encode(converted);
+  } catch {
+    return key; // Return unchanged if conversion fails
+  }
 }
 
 /**

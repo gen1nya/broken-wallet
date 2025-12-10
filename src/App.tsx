@@ -43,7 +43,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { FaMoon, FaSun, FaWallet, FaKey, FaMap, FaLock, FaSync, FaSignOutAlt } from 'react-icons/fa';
 import { BlockbookUtxo, fetchUtxos, fetchAllTransactions, BlockbookTransaction } from './blockbookClient';
-import { DerivedAddress, createRandomMnemonic, deriveWalletFromMnemonic } from './bitcoin';
+import { DerivedAddress, createRandomMnemonic, deriveWalletFromMnemonic, convertToNetworkFormat, getExtendedKeyLabel } from './bitcoin';
 import TransactionBuilderView from './TransactionBuilderView';
 import AddressModal from './AddressModal';
 import TransactionList from './TransactionList';
@@ -468,28 +468,45 @@ function App() {
                 <Stack spacing={4}>
                   <Heading size="md">Account Keys</Heading>
                   <Grid templateColumns="auto 1fr" gap={3} alignItems="center">
-                    {networkInfo.supportsSegwit && accountZpub && (
-                      <>
-                        <Text fontSize="sm" fontWeight="semibold">Segwit (BIP84):</Text>
-                        <QRCodePopover value={accountZpub} label="Segwit Account zpub (BIP84)">
-                          <Code fontFamily="mono" fontSize="xs" p={2} isTruncated>
-                            {accountZpub}
-                          </Code>
-                        </QRCodePopover>
-                      </>
-                    )}
+                    {networkInfo.supportsSegwit && accountZpub && (() => {
+                      const segwitLabel = getExtendedKeyLabel(network, true);
+                      const displayKey = convertToNetworkFormat(accountZpub, network, true);
+                      return (
+                        <>
+                          <Text fontSize="sm" fontWeight="semibold">Segwit ({segwitLabel.bip}):</Text>
+                          <QRCodePopover value={displayKey} label={`Segwit Account ${segwitLabel.prefix} (${segwitLabel.bip})`}>
+                            <Code fontFamily="mono" fontSize="xs" p={2} isTruncated>
+                              {displayKey}
+                            </Code>
+                          </QRCodePopover>
+                        </>
+                      );
+                    })()}
 
-                    <Text fontSize="sm" fontWeight="semibold">Legacy (BIP44):</Text>
-                    <QRCodePopover value={accountXpub} label="Legacy Account xpub (BIP44)">
-                      <Code fontFamily="mono" fontSize="xs" p={2} isTruncated>
-                        {accountXpub}
-                      </Code>
-                    </QRCodePopover>
+                    {(() => {
+                      const legacyLabel = getExtendedKeyLabel(network, false);
+                      const displayKey = convertToNetworkFormat(accountXpub, network, false);
+                      return (
+                        <>
+                          <Text fontSize="sm" fontWeight="semibold">Legacy ({legacyLabel.bip}):</Text>
+                          <QRCodePopover value={displayKey} label={`Legacy Account ${legacyLabel.prefix} (${legacyLabel.bip})`}>
+                            <Code fontFamily="mono" fontSize="xs" p={2} isTruncated>
+                              {displayKey}
+                            </Code>
+                          </QRCodePopover>
+                        </>
+                      );
+                    })()}
                   </Grid>
                   <Text fontSize="xs" color="gray.500">
-                    {networkInfo.supportsSegwit
-                      ? `zpub for P2WPKH (${networkInfo.bech32Prefix}1...) • xpub for P2PKH`
-                      : 'xpub for P2PKH'}
+                    {(() => {
+                      const legacyLabel = getExtendedKeyLabel(network, false);
+                      if (networkInfo.supportsSegwit) {
+                        const segwitLabel = getExtendedKeyLabel(network, true);
+                        return `${segwitLabel.prefix} for P2WPKH (${networkInfo.bech32Prefix}1...) • ${legacyLabel.prefix} for P2PKH`;
+                      }
+                      return `${legacyLabel.prefix} for P2PKH`;
+                    })()}
                   </Text>
                 </Stack>
               </Box>

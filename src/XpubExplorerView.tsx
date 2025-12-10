@@ -30,9 +30,9 @@ import {
 } from '@chakra-ui/react';
 import { useState, useMemo, useCallback } from 'react';
 import { FaSearch, FaSync } from 'react-icons/fa';
-import { DerivedAddress, deriveAddressesFromXpub, detectExtendedKeyInfo, ExtendedKeyInfo, XpubType, NETWORKS } from './bitcoin';
+import { DerivedAddress, deriveAddressesFromXpub, detectExtendedKeyInfo, ExtendedKeyInfo, XpubType, NETWORKS, normalizeKeyForApi } from './bitcoin';
 import { BlockbookTransaction, BlockbookUtxo, fetchAllTransactions, fetchUtxos, NetworkSymbol } from './blockbookClient';
-import { useNetwork } from './NetworkContext';
+import { useNetwork, SUPPORTED_NETWORKS } from './NetworkContext';
 import { QRCodeSVG } from 'qrcode.react';
 import TransactionList from './TransactionList';
 import TransactionDetailsModal from './TransactionDetailsModal';
@@ -395,13 +395,16 @@ export default function XpubExplorerView() {
     // Use detected network for API calls
     const effectiveNetwork = (detectedKeyInfo.network || network) as NetworkSymbol;
 
+    // Normalize key to standard xpub/zpub format for API calls
+    const apiKey = normalizeKeyForApi(xpub);
+
     // First, fetch all transactions for this xpub
     setDiscoveryStatus({
       phase: 'fetching',
       message: `Fetching transactions from ${NETWORKS[effectiveNetwork]?.extPubKeyPrefix || effectiveNetwork} blockchain...`,
     });
 
-    const txResult = await fetchAllTransactions(xpub, effectiveNetwork, 1000);
+    const txResult = await fetchAllTransactions(apiKey, effectiveNetwork, 1000);
     allTransactions = txResult.transactions ?? [];
 
     // If no transactions, just derive gap limit addresses and stop
@@ -551,6 +554,7 @@ export default function XpubExplorerView() {
       // Use detected network for UTXO fetch
       const detectedKeyInfo = detectExtendedKeyInfo(xpubInput.trim());
       const effectiveNetwork = (detectedKeyInfo.network || network) as NetworkSymbol;
+      const apiKey = normalizeKeyForApi(xpubInput.trim());
 
       // Fetch UTXOs
       setDiscoveryStatus(prev => ({
@@ -559,7 +563,7 @@ export default function XpubExplorerView() {
         message: 'Fetching UTXOs...',
       }));
 
-      const utxoResult = await fetchUtxos(xpubInput.trim(), effectiveNetwork);
+      const utxoResult = await fetchUtxos(apiKey, effectiveNetwork);
       setUtxos(utxoResult);
 
       setDiscoveryStatus(prev => ({
@@ -595,7 +599,8 @@ export default function XpubExplorerView() {
 
       // Use detected network for UTXO fetch
       const effectiveNetwork = (detectedNetwork || network) as NetworkSymbol;
-      const utxoResult = await fetchUtxos(xpubInput.trim(), effectiveNetwork);
+      const apiKey = normalizeKeyForApi(xpubInput.trim());
+      const utxoResult = await fetchUtxos(apiKey, effectiveNetwork);
       setUtxos(utxoResult);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to refresh data');
@@ -727,19 +732,14 @@ export default function XpubExplorerView() {
               <HStack justify="space-between" flexWrap="wrap">
                 <Heading size="md">Overview</Heading>
                 <HStack spacing={2} flexWrap="wrap">
-                  {keyInfo && detectedNetwork && (
+                  {detectedNetwork && (
                     <Badge colorScheme="orange" fontSize="sm" px={2}>
-                      {NETWORKS[detectedNetwork]?.extPubKeyPrefix?.toUpperCase() || detectedNetwork.toUpperCase()}
+                      {SUPPORTED_NETWORKS[detectedNetwork as NetworkSymbol]?.name || detectedNetwork.toUpperCase()}
                     </Badge>
                   )}
                   <Badge colorScheme="blue" fontSize="sm" px={2}>
-                    {xpubType === 'segwit' ? 'SEGWIT' : 'LEGACY'}
+                    {xpubType === 'segwit' ? 'SegWit' : 'Legacy'} ({keyInfo?.prefix || 'xpub'})
                   </Badge>
-                  {keyInfo?.prefix && (
-                    <Badge colorScheme="purple" fontSize="sm" px={2}>
-                      {keyInfo.prefix}
-                    </Badge>
-                  )}
                   <Badge colorScheme="gray" fontSize="sm" px={2}>
                     Gap: {gapLimit}
                   </Badge>
@@ -754,7 +754,7 @@ export default function XpubExplorerView() {
               <Grid templateColumns={{ base: '1fr', md: 'repeat(4, 1fr)' }} gap={4}>
                 <Box p={4} borderWidth="1px" borderRadius="md">
                   <Text fontWeight="bold" mb={1}>Network</Text>
-                  <Text fontSize="xl">{effectiveTicker}</Text>
+                  <Text fontSize="xl">{detectedNetwork ? SUPPORTED_NETWORKS[detectedNetwork as NetworkSymbol]?.name || effectiveTicker : effectiveTicker}</Text>
                 </Box>
                 <Box p={4} borderWidth="1px" borderRadius="md">
                   <Text fontWeight="bold" mb={1}>Total Addresses</Text>
